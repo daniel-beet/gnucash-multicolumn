@@ -1,0 +1,7 @@
+(load (gnc-build-dotgnucash-path "report-other-menu.scm"))
+(load (gnc-build-dotgnucash-path "gnctimeperiod-utilities.scm"))
+(load (gnc-build-dotgnucash-path "income-expense-statement.scm"))
+(load (gnc-build-dotgnucash-path "transactionbypayee.scm"))
+;(load (gnc-build-dotgnucash-path "myhelloworld.scm"))
+;(load (gnc-build-dotgnucash-path "account-delta.scm"))
+;(load (gnc-build-dotgnucash-path "cash-flow-v2.scm"))

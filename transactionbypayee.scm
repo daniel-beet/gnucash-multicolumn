@@ -77,6 +77,12 @@
 
 ;; added for find
 (define optname-find-descript (N_ "Find Description"))
+(define optname-find-text? (N_ "Find Text"))
+(define optname-find1-field (N_ "Search"))
+(define optname-find1-text   (N_ "finding the text"))
+(define optname-find2-operand (N_ "Search for entries containing above string "))
+(define optname-find2-field (N_ "2nd location"))
+(define optname-find2-text (N_ "2nd string"))
 (define optname-find-min (N_ "Find minimum amount"))
 (define optname-find-max (N_ "Find maximum ammount"))
 
@@ -87,7 +93,7 @@
 (define scaling-text "Note: amount and balance")
 
 
-;; this is section 2 of 4
+;; this is step 2 of 4
 ;; needed for gnctimeperiod-utilities 
 ;; define all option's names so that they are properly defined
 ;; in *one* place.
@@ -133,11 +139,77 @@
 	 	
 ;; end of section 2 needed for gnctimeperiod-utilities 
 ;; for find
+(define list-findchoices
+   (list (list->vector
+             (list 'description
+                   (N_ "description  ")
+                   (N_ "search descriptions or transactions for the text - note a blank is added at start and end of description")))
+            (list->vector
+             (list 'accountname
+                   (N_ "account name")
+                   (N_ "search full account name ")))
+            (list->vector
+             (list 'accountcode
+                   (N_ "account code")
+                   (N_ "search account code")))
+            (list->vector
+             (list 'memo
+                   (N_ "memo    ")
+                   (N_ "Search only memo field")))
+			(list->vector
+             (list 'notes
+                   (N_ "notes    ")
+                   (N_ "search only notes")))          
+           )
+)
+
+(define list-find2-operands
+   (list (list->vector
+             (list 'none
+                   (N_ "    ONLY                            " )
+                   (N_ "do not look for a second string of text")))
+            (list->vector
+             (list 'and
+                   (N_ "and the 2nd string ")
+                   (N_ "the transaction also must include the second text string")))
+            (list->vector
+             (list 'or
+                   (N_ "or the 2nd string")
+                   (N_ "search for either of the two text strings ")))
+            (list->vector
+             (list 'not
+                   (N_ "but exclude entries with 2nd string")
+                   (N_ "Search transactions that do not include the second text string")))         
+           )
+)
+
+(define scale-num	
+		(list
+		(cons '*  (vector gnc-numeric-mul (N_ "multiplied by ")))
+		(cons '/  (vector gnc-numeric-div (N_ "divided by ")))
+		))
+;(define find-get-split-entry
+;		(list
+;		(cons 'description (vector xaccTransGetDescription parent )) 
+;		(cons 'accountname (vector gnc-account-get-full-name account))
+;		(cons 'accountcode  (vector xaccAccountGetCode account))
+;		(cons 'memo 	(vector xaccSplitGetMemo currentsplit))
+;		(cons 'notes	(vector  xaccTransGetNotes parent) )
+;		))		
+			
+
 (define dofind? #f)
 (define find-desc? #f)
 (define find-min? #f)
 (define find-max? #f)
 (define find-desc "description to find")
+(define find-text? #f)
+(define find1-field 'description )
+(define find2-operand 'and)
+(define find1-text  "text to find")
+(define find2-field 'description )
+(define find2-text "description to find")
+
 (define find-min 100.00)
 (define find-max 100.00)
 (define findtitle "")
@@ -1212,9 +1284,11 @@
 
   (let* ((row-contents '())
 	 (dummy  (gnc:debug "split-trans is originally" split-trans))
-
-		 (currency-frac (gnc-commodity-get-fraction (gnc-default-currency)))	
-		 (split-value (gnc:make-gnc-monetary (gnc-default-currency) 
+		(report-currency (if (opt-val gnc:pagename-general optname-common-currency)
+			       (opt-val gnc:pagename-general optname-currency)
+			       (gnc-default-currency) )) ; currency))
+		 (currency-frac (gnc-commodity-get-fraction report-currency))	
+		 (split-value (gnc:make-gnc-monetary report-currency 
 			(if (= 1 scale-num-val)
 			(get-split-value split-trans)
 			((vector-ref (cdr (assq scale-op-val  scale-num)) 0)
@@ -1286,9 +1360,10 @@
 	  (addto! row-contents
 		  (gnc:make-html-table-cell/markup
 		   "number-cell"
-			(gnc:make-gnc-monetary (gnc-default-currency)
+			(gnc:make-gnc-monetary report-currency
 		;	(if use-old-running-balance?	is not connected up			
 		;			  (xaccSplitGetBalance split))
+    
 					amount-total )))))
     
 	(gnc:html-table-append-row/markup! table row-style
@@ -1322,7 +1397,7 @@
 ;;  
  
 ;; 
- ;; section 3 of 4 to add gnctimeperiod-utilities
+ ;; step 3 of 4 to add gnctimeperiod-utilities
      ;add  select custom date or a specific period
 	 ; changed add-option to gnc:register-trep-option
 (let ((periodoptions gnc:*transaction-report-options*))
@@ -1720,14 +1795,88 @@
     (gnc:register-trep-option
      (gnc:make-simple-boolean-option
       pagename-sorting (N_ optname-find-descript)
-      "j" 
+      "i1" 
       (N_ "Only show transactions containing the string ")
       #f))
+	 ;;
+	(gnc:register-trep-option
+    (gnc:make-complex-boolean-option
+     pagename-sorting (N_ optname-find-text?)
+    "j1" (N_ "Only show transactions containing the string") #f
+      #f
+    (lambda (x) (gnc-option-db-set-option-selectable-by-name
+		 gnc:*transaction-report-options*
+		 pagename-sorting optname-find1-field x)
+		(gnc-option-db-set-option-selectable-by-name
+		 gnc:*transaction-report-options*
+		 pagename-sorting optname-find1-text	
+		 x))
+    ))
+ 
+    (gnc:register-trep-option
+     (gnc:make-multichoice-option
+      pagename-sorting  optname-find1-field
+      "j2" (N_ "Select which field or category to use")
+      'description
+	  list-findchoices))
+	  
+	(gnc:register-trep-option
+     (gnc:make-string-option
+      pagename-sorting optname-find1-text
+      "j3" (N_ "Transaction description contains   (enter as Capital letters)") (N_ " ")))
+
+	
+;
+;	 (let ((periodoptions gnc:*transaction-report-options*))
+	(gnc:register-trep-option
+;		(gnc:make-multichoice-callback-option
+		(gnc:make-multichoice-option
+		pagename-sorting optname-find2-operand
+		"j4" (N_ "Select which field or category to use")
+		'none
+		list-find2-operands))
+;		list-findchoices #f
+;		(lambda (x)
+;		(gnc-option-db-set-option-selectable-by-name
+;		 gnc:*transaction-report-options*
+ ;        pagename-sorting (N_ text-pick-year)
+ ;        (if (equal? x 'customdates) #f #t))
+;		(gnc-option-db-set-option-selectable-by-name
+ ;		 gnc:*transaction-report-options*
+;        pagename-sorting (N_ text-period)
+ ;        (if (equal? x 'period) #t #f))
+;		(gnc-option-db-set-option-selectable-by-name
+;         periodoptions the_tab (N_ text-last)
+;         (if (equal? x 'last) #t #f))
+;		(gnc-option-db-set-option-selectable-by-name
+ ;        periodoptions the_tab (N_ text-month)
+  ;       (if (equal? x 'month) #t #f))
+;		))
+;	))
+;	 
+;	 
+	  
+	 
+    (gnc:register-trep-option
+     (gnc:make-multichoice-option
+      pagename-sorting  optname-find2-field
+      "j5" (N_ "Select which field or category to use")
+      'description
+	  list-findchoices))
+	  
+		(gnc:register-trep-option
+     (gnc:make-string-option
+      pagename-sorting optname-find2-text
+      "j6" (N_ "text to look for  (enter as Capital letters)") (N_ " ")))
+	
+	
+  
+	 ;;
     
 	(gnc:register-trep-option
      (gnc:make-string-option
       pagename-sorting (N_ "Description contains")
-      "k" (N_ "Transaction description contains   (enter as Capital letters)") (N_ " ")))
+      "i2" (N_ "Transaction description contains   (enter as Capital letters)") (N_ " ")))
      
     (gnc:register-trep-option
      (gnc:make-simple-boolean-option
@@ -1930,10 +2079,24 @@ Credit Card, and Income accounts.")))))
 								(timespecCanonicalDayTime trans-date)))
 				(split-value-num  (gnc:gnc-numeric-num (gnc:gnc-monetary-amount split-value)))				
 				)
-
+;((vector-ref (cdr (assq scale-op-val  scale-num)) 0)
 				(if (and
 					(or (not find-desc?) (string-contains-ci descript find-desc)
-					   (string-contains descript find-desc)) ; for some reason case insenative test doesn't find tri in trial transaction			
+			;		;; find in memo ok
+					(string-contains (string-append " " (string-upcase (xaccSplitGetMemo currentsplit) ) " ")  find-desc)
+					(string-contains-ci (xaccSplitGetMemo currentsplit) find-desc)
+					(string-contains  (xaccSplitGetMemo currentsplit)  find-desc)
+			;		;; find in notes ok
+					(string-contains-ci (xaccTransGetNotes parent) find-desc)
+					(string-contains (xaccTransGetNotes parent) find-desc)
+			;		;;find in account name - ok
+					(string-contains-ci (gnc-account-get-full-name account) find-desc)
+					(string-contains (gnc-account-get-full-name account) find-desc)
+			;		;;find in account code -ok
+					(string-contains-ci (xaccAccountGetCode account) find-desc)
+					(string-contains (xaccAccountGetCode account) find-desc)			
+			;		;; continue with original version of program
+				   (string-contains descript find-desc)) ; for some reason case insenative test doesn't find tri in trial transaction			
 					(or (not find-min?) (>= split-value-num find-min ))
 					(or (not find-max?) (<= split-value-num find-max ))
 					)				
@@ -1970,6 +2133,7 @@ Credit Card, and Income accounts.")))))
 					)
 			)
 		)
+	;; find for composite
 		(if dofind?
 		(filter splitcompfound? splits )
 		splits)
@@ -2994,7 +3158,7 @@ Credit Card, and Income accounts.")))))
 	(c_account_2 (opt-val gnc:pagename-accounts "Filter By..."))
 	(filter-mode (opt-val gnc:pagename-accounts "Filter Type"))
 
-	;; section 4 of 4 needed for gnctimeperiod-utilities
+	;; step 4 of 4 needed for gnctimeperiod-utilities
 ;; the let needs to be a let*
 ;; may need to change op-value to get-option  
 		(whichperiod-val (opt-val the_tab text-whichperiod))
@@ -3166,6 +3330,10 @@ Credit Card, and Income accounts.")))))
 	
 		(set! payee-hash (make-hash-table) )
 		(set! payee-account-guid-hash (make-hash-table))
+		;; handle find for text before creating the composite entries
+		;((vector-ref (cdr (assq scale-op-val  scale-num)) 0)
+		;(account-types-to-reverse	(get-account-types-to-reverse options)))
+		;		(set! splits (filtersplits-found splits account-types-to-reverse ))
 
 		 (get-the-transactions splits 
 						(opt-val pagename-sorting (N_ "Show Full Account Name"))
@@ -3211,9 +3379,9 @@ Credit Card, and Income accounts.")))))
 				(set! splits (filtersplits-found splits account-types-to-reverse ))))
 	))
 		
-		
+;;		
 	
-	;; end dbd
+
 	
 	
           (if (not (null? splits))

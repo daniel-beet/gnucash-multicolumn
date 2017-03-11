@@ -9,8 +9,9 @@
 ;; Michael T. Garrison Stuber
 ;; Modified account names display by Tomas Pospisek
 ;; <tpo_deb@sourcepole.ch> with a lot of help from "warlord"
-;; Modified to allow date selection by specified time period and to create running balance 
-;; total.  Also modified to add find capability and to consolidate or create 
+;; Modified to allow date selection by specified time period, to create
+;; running balance total, and scale (multiply or divide) results.  Also,
+;; modified to add find capability and to consolidate or create 
 ;; composite transactions by D.B.Doughty <dbdoughty at gmail.com>
 ;;
 
@@ -230,6 +231,8 @@
 (define amount-total (gnc-numeric-zero))
 (define curr " ")
 (define comm-curr? #f)
+(define currency-type-num 1)
+(define currency-type "1")
 (define now (timespecCanonicalDayTime (cons (current-time) 0)))
 (define today-tm (gnc:timepair->date now))
 (define list_of_trans '((a 1) (b 2)))
@@ -257,6 +260,8 @@
 				
 (define payee-hash (make-hash-table) )
 (define payee-account-guid-hash (make-hash-table))
+(define currency-type-hash (make-hash-table) )
+(define currency-lookup-hash (make-hash-table) )
    	
 ;; routine to sum up all descriptions with same payee and to store account guid
  (define (total-payee-hash-add! payee-hash payee amount payee-account-guid-hash account-guid )
@@ -336,16 +341,28 @@
 (define (get-date-tp transaction)
 	(gnc:date->timepair (get-date-tm transaction))
 	)
+(define (get-currency-type transaction)
+	(let* (
+			(thekey (car transaction))
+			(startcurr (string-contains thekey "#Zv;"))
+			(currency-type (if (< (+ startcurr 4) (string-length thekey)) 
+							(string-copy thekey (+ startcurr 4))
+							;(string-take-right thekey (+ startcurr 4))
+							" ")))
+			currency-type)
+	)
+	
 (define (get-memo transaction)
 	(let* (
 			(thekey (car transaction))
+			(endmemo  (string-contains thekey "#Zv;"))
 			(startmem (string-contains thekey "#Zw;"))
-			(memo (if (< (+ startmem 4) (string-length thekey)) 
-							(string-copy thekey (+ startmem 4))
-							;(string-take-right thekey (+ startmem 4))
-							" ")))
+			(memo (if  (< 4 (- endmemo startmem))
+						(string-copy thekey  (+ startmem 4) endmemo)
+						" ")))
 			memo)
-	)
+	)	
+	
 (define (get-description transaction)
 	(let* (
 			(thekey (car transaction))
@@ -1267,7 +1284,8 @@
 			       (opt-val gnc:pagename-general optname-currency)
 			       (gnc-default-currency) )) ; currency))
 		 (currency-frac (gnc-commodity-get-fraction report-currency))	
-		 (split-value (gnc:make-gnc-monetary report-currency 
+;		 (split-value (gnc:make-gnc-monetary report-currency 
+		 (split-value (gnc:make-gnc-monetary (hash-ref currency-lookup-hash (get-currency-type split-trans)) 
 			(if (= 1 scale-num-val)
 			(get-split-value split-trans)
 			((vector-ref (cdr (assq scale-op-val  scale-num)) 0)
@@ -1831,7 +1849,7 @@
 	(gnc:register-trep-option
      (gnc:make-string-option
       pagename-sorting optname-find1-text
-      "k3" (N_ "text to look for (all transactions have a space added at front so ' a' will include all which start with a ") (N_ " ")))
+      "k3" (N_ "text to look for (all transactions have a space added at front so ' a' will include all which start with a ") (N_ "")))
 
 	
 ;
@@ -1875,7 +1893,7 @@
 		(gnc:register-trep-option
      (gnc:make-string-option
       pagename-sorting optname-find2-text
-      "k6" (N_ "text to look for  ") (N_ " ")))
+      "k6" (N_ "text to look for  ") (N_ "")))
 	  
  )
 	  	  
@@ -3120,12 +3138,18 @@ Credit Card, and Income accounts.")))))
                                    (used-other-account-name      column-vector)
                                    (used-other-account-full-name column-vector))								   
 								   ""))
-      
+		(hashed-currency (hash-ref currency-type-hash currency currency-type)) ; in case transactions with same description have different currencies
+		
 		(hashkey (string-append  primary-sort "#Yw;" secondary-sort "#Yx;" date-string "#Yy;" descript "#Yz;"
-			acctnamecode "#Zy;" acct-code "#Zx;" acctothernamcod "#Zw;" memo ))
+			acctnamecode "#Zy;" acct-code "#Zx;" acctothernamcod "#Zw;" memo "#Zv;" hashed-currency  ))
 		 )
-		(total-payee-hash-add! payee-hash hashkey split-value-mon payee-account-guid-hash guids)	
-		 
+		(total-payee-hash-add! payee-hash hashkey split-value-mon payee-account-guid-hash guids)
+		(if (equal? currency-type hashed-currency)
+				(begin
+				(hash-set! currency-type-hash currency hashed-currency )
+				(set! currency-type-num (+ 1 currency-type-num))
+				(set! currency-type (number->string currency-type-num))
+		))
 		(if (> (length rest) 0) 
 			(get-the-transactions rest account-full-name? account-code? primary-comp-key secondary-comp-key ))
 		)
@@ -3363,22 +3387,19 @@ Credit Card, and Income accounts.")))))
 	
 		(set! payee-hash (make-hash-table) )
 		(set! payee-account-guid-hash (make-hash-table))
+		(set! currency-type-hash (make-hash-table))
+		(set! currency-lookup-hash (make-hash-table))
+		(set! currency-type-num 1)
+		(set! currency-type (number->string currency-type-num))
 
-		 (get-the-transactions splits 
+		 (get-the-transactions splits  ;; routine to consolidate the transactions
 						(opt-val pagename-sorting (N_ "Show Full Account Name"))
 						(opt-val pagename-sorting (N_ "Show Account Code"))
 						primary-comp-key secondary-comp-key
 						)
 		(let* (
 		 
-		 (sort-typeq (if (not (equal? primary-key 'amount))
-						(if (equal? secondary-key 'amount)
-									'primary_amount
-									'primary_secondary) 
-						(if (equal? secondary-key 'amount)
-									'amount_amount 
-									'amount_secondary)
-					))
+
 		(sort-type (get-sort-type primary-key secondary-key))
 		
 		(var-p (comp-sort-helper sort-type 0))
@@ -3395,9 +3416,12 @@ Credit Card, and Income accounts.")))))
 						))
 	 		)		
 		(set! list_of_trans (sortpayees payee-hash var-p var-s comp-p1 comp-p2 comp-s1 comp-s2))
-		 ;for find for composite descriptions
+		 ;for find for composite min and max amounts
 	    (set! list_of_trans (filtersplitscomp-found list_of_trans ))
-			
+		(hash-for-each  (lambda (key val)	
+						(hash-set! currency-lookup-hash val key))
+						currency-type-hash)
+	
 		 )))
 		 ; make into else ie. if not consolidate ;
 		
@@ -3557,6 +3581,8 @@ Credit Card, and Income accounts.")))))
 			othernam
 			"descrip"
 			description
+			"currency type"
+			(get-currency-type current-trans)
 			"the_key"
 		     thekey
 			" "

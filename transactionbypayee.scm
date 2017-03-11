@@ -57,7 +57,7 @@
 
 ;; Define the strings here to avoid typos and make changes easier.
 
-(define reportname (N_ "Transaction by Payee Summary"))
+(define reportname (N_ "Transaction by Payee Report"))
 (define pagename-sorting (N_ "Sorting"))
 (define optname-prime-sortkey (N_ "Primary Key"))
 (define optname-prime-subtotal (N_ "Primary Subtotal"))
@@ -76,15 +76,21 @@
 (define def:secondary-subtotal-style "secondary-subheading")
 
 ;; added for find
-(define optname-find-descript (N_ "Find Description"))
 (define optname-find-text? (N_ "Find Text"))
 (define optname-find1-field (N_ "Search"))
 (define optname-find1-text   (N_ "finding the text"))
 (define optname-find2-operand (N_ "Search for entries containing above string "))
-(define optname-find2-field (N_ "2nd location"))
+(define optname-find2-field (N_ "Search for 2nd string in "))
 (define optname-find2-text (N_ "2nd string"))
 (define optname-find-min (N_ "Find minimum amount"))
 (define optname-find-max (N_ "Find maximum ammount"))
+
+(define text-containing ", containing " )
+(define text-and " and ")
+(define text-or " or ")
+(define text-but-not " but not ")
+(define text-minimum ", Minimum ")
+(define text-maximum ", Maximum ")
 
 ;; added for consolidating
 (define consolidated-text "Consolidated")
@@ -145,11 +151,11 @@
                    (N_ "description  ")
                    (N_ "search descriptions or transactions for the text - note a blank is added at start and end of description")))
             (list->vector
-             (list 'accountname
+             (list 'account-name
                    (N_ "account name")
                    (N_ "search full account name ")))
             (list->vector
-             (list 'accountcode
+             (list 'account-code
                    (N_ "account code")
                    (N_ "search account code")))
             (list->vector
@@ -159,7 +165,15 @@
 			(list->vector
              (list 'notes
                    (N_ "notes    ")
-                   (N_ "search only notes")))          
+                   (N_ "search only notes")))
+			(list->vector
+             (list 'memo/notes
+                   (N_ "memo/notes    ")
+                   (N_ "search both memo and notes")))
+			(list->vector
+             (list 'any
+                   (N_ "any    ")
+                   (N_ "search description and account-name and account-code and memo and notes ")))
            )
 )
 
@@ -188,21 +202,10 @@
 		(cons '*  (vector gnc-numeric-mul (N_ "multiplied by ")))
 		(cons '/  (vector gnc-numeric-div (N_ "divided by ")))
 		))
-;(define find-get-split-entry
-;		(list
-;		(cons 'description (vector xaccTransGetDescription parent )) 
-;		(cons 'accountname (vector gnc-account-get-full-name account))
-;		(cons 'accountcode  (vector xaccAccountGetCode account))
-;		(cons 'memo 	(vector xaccSplitGetMemo currentsplit))
-;		(cons 'notes	(vector  xaccTransGetNotes parent) )
-;		))		
-			
-
-(define dofind? #f)
-(define find-desc? #f)
+		
+(define do-find? #f)
 (define find-min? #f)
 (define find-max? #f)
-(define find-desc "description to find")
 (define find-text? #f)
 (define find1-field 'description )
 (define find2-operand 'and)
@@ -213,6 +216,7 @@
 (define find-min 100.00)
 (define find-max 100.00)
 (define findtitle "")
+
 
 ;;for running balance
 (define use-old-running-balance? #f)
@@ -1107,30 +1111,6 @@
     (gnc:option-value 
      (gnc:lookup-option options section name)))
 	 
-;; check if the transaction meets the find requirements
-;;
-	(define (entryfound? currentsplit)
-		;  (if (not (null? splits))
-		(let* (
-			(parent (xaccSplitGetParent currentsplit))
-			(descript (xaccTransGetDescription parent))
-			(account (xaccSplitGetAccount currentsplit))
-			(damount (if (gnc:split-voided? currentsplit)
-				 (xaccSplitVoidFormerAmount currentsplit)
-				 (xaccSplitGetAmount currentsplit)))
-			(damount-num (gnc:gnc-numeric-num damount) )
-				
-			)
-			(if (and
-				(or (not find-desc?) (string-contains-ci descript find-desc))
-				(or (not find-min?) (>= damount-num find-min ))
-				(or (not find-max?) (<= damount-num find-max ))
-				)				
-				#t
-				#f
-				)
-		)
-	)	
 
   (let* ((row-contents '())
 	 (dummy  (gnc:debug "split is originally" split))
@@ -1264,7 +1244,6 @@
 					(if use-old-running-balance?
 						(if (= 1 scale-num-val)
 						(xaccSplitGetBalance split) 
-			;			(xaccSplitGetBalance split))
 						((vector-ref (cdr (assq scale-op-val  scale-num)) 0)
 							(xaccSplitGetBalance split) scale-num-numeric currency-frac GNC-RND-ROUND)) 
 					amount-total ))))))
@@ -1760,7 +1739,7 @@
       pagename-sorting optname-sec-sortkey
       "f"
       (N_ "Sort by this criterion second.")
-      'register-order
+      'date
       key-choice-list #f
       (lambda (x)
         (gnc-option-db-set-option-selectable-by-name
@@ -1792,17 +1771,46 @@
 	  ascending-choice-list))
 	
 ;for find
+ (gnc:register-trep-option
+     (gnc:make-simple-boolean-option
+      pagename-sorting (N_ optname-find-min)
+      "j1" 
+      (N_ "Only show amounts greater than or equal to")
+     #f))
+    
+	(gnc:register-trep-option
+		(gnc:make-number-range-option pagename-sorting (N_ "Min Amount")
+		"j2" (N_ "Minimum amount to show")
+			100.0   ;; default
+		-900000.0       ;; lower bound
+		4000000.0   ;; upper bound
+			2.0     ;; number of decimals
+		   100.0    ;; step size
+		))
+	
+
     (gnc:register-trep-option
      (gnc:make-simple-boolean-option
-      pagename-sorting (N_ optname-find-descript)
-      "i1" 
-      (N_ "Only show transactions containing the string ")
+      pagename-sorting (N_ optname-find-max)
+      "j3" 
+      (N_ "Only show entries less than or equal")
       #f))
-	 ;;
+    	
+	(gnc:register-trep-option
+		(gnc:make-number-range-option pagename-sorting (N_ "Max Amount")
+		"j4" (N_ "Maximum amount to show")
+			1000.0  ;; default
+		 -800000.0  ;; lower bound
+		  5000000.0 ;; upper bound
+			2.0     ;; number of decimals
+		  100.0     ;; step size
+		))
+
+ 	 ;;
 	(gnc:register-trep-option
     (gnc:make-complex-boolean-option
      pagename-sorting (N_ optname-find-text?)
-    "j1" (N_ "Only show transactions containing the string") #f
+    "k1" (N_ "Only show transactions containing the string") #f
       #f
     (lambda (x) (gnc-option-db-set-option-selectable-by-name
 		 gnc:*transaction-report-options*
@@ -1816,14 +1824,14 @@
     (gnc:register-trep-option
      (gnc:make-multichoice-option
       pagename-sorting  optname-find1-field
-      "j2" (N_ "Select which field or category to use")
+      "k2" (N_ "Select which field or category to use")
       'description
 	  list-findchoices))
 	  
 	(gnc:register-trep-option
      (gnc:make-string-option
       pagename-sorting optname-find1-text
-      "j3" (N_ "Transaction description contains   (enter as Capital letters)") (N_ " ")))
+      "k3" (N_ "text to look for (all transactions have a space added at front so ' a' will include all which start with a ") (N_ " ")))
 
 	
 ;
@@ -1832,7 +1840,7 @@
 ;		(gnc:make-multichoice-callback-option
 		(gnc:make-multichoice-option
 		pagename-sorting optname-find2-operand
-		"j4" (N_ "Select which field or category to use")
+		"k4" (N_ "Select which field or category to use")
 		'none
 		list-find2-operands))
 ;		list-findchoices #f
@@ -1860,58 +1868,14 @@
     (gnc:register-trep-option
      (gnc:make-multichoice-option
       pagename-sorting  optname-find2-field
-      "j5" (N_ "Select which field or category to use")
+      "k5" (N_ "Select which field or category to use")
       'description
 	  list-findchoices))
 	  
 		(gnc:register-trep-option
      (gnc:make-string-option
       pagename-sorting optname-find2-text
-      "j6" (N_ "text to look for  (enter as Capital letters)") (N_ " ")))
-	
-	
-  
-	 ;;
-    
-	(gnc:register-trep-option
-     (gnc:make-string-option
-      pagename-sorting (N_ "Description contains")
-      "i2" (N_ "Transaction description contains   (enter as Capital letters)") (N_ " ")))
-     
-    (gnc:register-trep-option
-     (gnc:make-simple-boolean-option
-      pagename-sorting (N_ optname-find-min)
-      "l" 
-      (N_ "Only show amounts greater than or equal to")
-     #f))
-    
-	(gnc:register-trep-option
-		(gnc:make-number-range-option pagename-sorting (N_ "Min Amount")
-		"m" (N_ "Minimum amount to show")
-			100.0   ;; default
-		-900000.0       ;; lower bound
-		4000000.0   ;; upper bound
-			2.0     ;; number of decimals
-		   100.0    ;; step size
-		))
-	
-
-    (gnc:register-trep-option
-     (gnc:make-simple-boolean-option
-      pagename-sorting (N_ optname-find-max)
-      "n" 
-      (N_ "Only show entries less than or equal")
-      #f))
-    	
-	(gnc:register-trep-option
-		(gnc:make-number-range-option pagename-sorting (N_ "Max Amount")
-		"o" (N_ "Maximum amount to show")
-			1000.0  ;; default
-		 -800000.0  ;; lower bound
-		  5000000.0 ;; upper bound
-			2.0     ;; number of decimals
-		  100.0     ;; step size
-		))
+      "k6" (N_ "text to look for  ") (N_ " ")))
 	  
  )
 	  	  
@@ -2045,96 +2009,112 @@ Credit Card, and Income accounts.")))))
 ;; check if the transaction meets the find requirements
 ;;
 
-	(define (filtersplits-found splits account-types-to-reverse)
+(define (filtersplits-found splits account-types-to-reverse consolidate?)
+	
 	
 	(define (splitfound? currentsplit )
 		;  (if (not (null? splits))
 		
-			(let* (
-				(parent (xaccSplitGetParent currentsplit))
-				(descript (xaccTransGetDescription parent))
-				(account (xaccSplitGetAccount currentsplit))
-				(account-type (xaccAccountGetType account))
-				(damount (if (gnc:split-voided? currentsplit)
-								(xaccSplitVoidFormerAmount currentsplit)
-								(xaccSplitGetAmount currentsplit)))					 
-				(currency (if (not (null? account))
-                       (xaccAccountGetCommodity account)
-                       (gnc-default-currency)))
-				(report-currency (if comm-curr?
-									curr
-									currency))	 					 
-				(trans-date (gnc-transaction-get-date-posted parent))				
+		(let* (
+			(parent (xaccSplitGetParent currentsplit))
+			(descript (xaccTransGetDescription parent))
+				
+			(account (xaccSplitGetAccount currentsplit))
+			(account-type (xaccAccountGetType account))
+			(damount (if (gnc:split-voided? currentsplit)
+							(xaccSplitVoidFormerAmount currentsplit)
+							(xaccSplitGetAmount currentsplit)))					 
+			(currency (if (not (null? account))
+                      (xaccAccountGetCommodity account)
+                      (gnc-default-currency)))
+			(report-currency (if comm-curr?
+								curr
+								currency))	 					 
+			(trans-date (gnc-transaction-get-date-posted parent))				
 			
-				(split-value (gnc:exchange-by-pricedb-nearest
-								(gnc:make-gnc-monetary 
-								currency
-								(if (member account-type account-types-to-reverse) 
-									(gnc-numeric-neg damount)
-									damount))
-								report-currency
-								;; Use midday as the transaction time so it matches a price
-								;; on the same day.  Otherwise it uses midnight which will
-								;; likely match a price on the previous day
-								(timespecCanonicalDayTime trans-date)))
-				(split-value-num  (gnc:gnc-numeric-num (gnc:gnc-monetary-amount split-value)))				
+			(split-value (gnc:exchange-by-pricedb-nearest
+							(gnc:make-gnc-monetary 
+							currency
+							(if (member account-type account-types-to-reverse) 
+								(gnc-numeric-neg damount)
+								damount))
+							report-currency
+							;; Use midday as the transaction time so it matches a price
+							;; on the same day.  Otherwise it uses midnight which will
+							;; likely match a price on the previous day
+							(timespecCanonicalDayTime trans-date)))
+			(split-value-num  (gnc:gnc-numeric-num (gnc:gnc-monetary-amount split-value)))		
 				)
-;((vector-ref (cdr (assq scale-op-val  scale-num)) 0)
-				(if (and
-					(or (not find-desc?) (string-contains-ci descript find-desc)
-			;		;; find in memo ok
-					(string-contains (string-append " " (string-upcase (xaccSplitGetMemo currentsplit) ) " ")  find-desc)
-					(string-contains-ci (xaccSplitGetMemo currentsplit) find-desc)
-					(string-contains  (xaccSplitGetMemo currentsplit)  find-desc)
-			;		;; find in notes ok
-					(string-contains-ci (xaccTransGetNotes parent) find-desc)
-					(string-contains (xaccTransGetNotes parent) find-desc)
-			;		;;find in account name - ok
-					(string-contains-ci (gnc-account-get-full-name account) find-desc)
-					(string-contains (gnc-account-get-full-name account) find-desc)
-			;		;;find in account code -ok
-					(string-contains-ci (xaccAccountGetCode account) find-desc)
-					(string-contains (xaccAccountGetCode account) find-desc)			
-			;		;; continue with original version of program
-				   (string-contains descript find-desc)) ; for some reason case insenative test doesn't find tri in trial transaction			
-					(or (not find-min?) (>= split-value-num find-min ))
-					(or (not find-max?) (<= split-value-num find-max ))
-					)				
-					#t
-					#f
-					)
-			)
+;;;;;				
+		(define (found-text? which-field text-to-find )
+		(if (equal? which-field 10 ) ; 'description
+			(string-contains (string-append " " (string-upcase (xaccTransGetDescription parent) ) " ")  text-to-find)
+		(if (equal? which-field  13 ) ; 'memo
+			(string-contains (string-append " " (string-upcase (xaccSplitGetMemo currentsplit) ) " ")  text-to-find)
+		(if (equal? which-field 14 ) ; 'notes
+			(string-contains (string-append " " (string-upcase (xaccTransGetNotes parent) ) " ")  text-to-find)
+		(if (equal? which-field 1 ) ; 'account-name
+			(string-contains (string-append " " (string-upcase (gnc-account-get-full-name account) ) " ")  text-to-find)
+		(if (equal? which-field  2) ;'accountcodee
+			(string-contains (string-append " " (string-upcase (xaccAccountGetCode account) ) " ")  text-to-find)
+		(if (equal? which-field  16 ) ; 'memo/notes
+			(or (string-contains (string-append " " (string-upcase (xaccSplitGetMemo currentsplit) ) " ")  text-to-find) ;memo
+			(string-contains (string-append " " (string-upcase (xaccTransGetNotes parent) ) " ")  text-to-find)) ;notes		
+		(if (equal? which-field 15 ) ; 'any
+			(or (string-contains (string-append " " (string-upcase (xaccTransGetDescription parent) ) " ")  text-to-find) ;description
+			(string-contains (string-append " " (string-upcase (xaccSplitGetMemo currentsplit) ) " ")  text-to-find) ; memo
+			(string-contains (string-append " " (string-upcase (xaccTransGetNotes parent) ) " ")  text-to-find) ;notes
+			(string-contains (string-append " " (string-upcase (gnc-account-get-full-name account) ) " ")  text-to-find) ;account-name
+			(string-contains (string-append " " (string-upcase (xaccAccountGetCode account) ) " ")  text-to-find)) ; account-code			
+			#t ; for none
+		))))))))
+;;;;;;		
+
+			
+		(and
+			(or (not find-text?)  
+				(if find-text?
+					(let* ((found1? (found-text? find1-field  find1-text)))
+						(if (equal? find2-operand 'none)
+								found1?
+						(if (equal? find2-operand 'and)	
+								(and found1? (found-text? find2-field  find2-text))
+						(if (equal? find2-operand 'or)	
+								(or found1? (found-text? find2-field  find2-text))											
+						(if (equal? find2-operand 'not)	
+								(and found1? (not (found-text? find2-field  find2-text)))											
+								#f)))))
+								#f)
+				)
+			(or (not find-min?) consolidate? (>= split-value-num find-min )) ; consolidated find is handled in different section
+			(or (not find-max?) consolidate? (<= split-value-num find-max ))
+		)				
+		)
 		)
 		(filter splitfound? splits )
 		)
 		
 	;
 
-		(define (filtersplitscomp-found splits )
+(define (filtersplitscomp-found splits ) ; only handles ammount - the find for text was handled earlier
 	
-	(define (splitcompfound? currentsplit )
+	(define (splitcompfound? currentsplit ) 
 		;  (if (not (null? splits))
-		
-			(let* (
-				(descript (get-description currentsplit))
-				(split-value (get-split-value currentsplit))
-			;	(split-value-num  (gnc:gnc-numeric-num (gnc:gnc-monetary-amount split-value)))				
-				(split-value-num  (gnc:gnc-numeric-num  split-value))				
-				)
+		;;;;
+		(let* (
+			(split-value (get-split-value currentsplit))
+			(split-value-num  (gnc:gnc-numeric-num  split-value))				
+			)
 
-				(if (and
-					(or (not find-desc?) (string-contains-ci descript find-desc)
-					   (string-contains descript find-desc)) ; for some reason case insenative test doesn't find tri in trial transaction			
-					(or (not find-min?) (>= split-value-num find-min ))
-					(or (not find-max?) (<= split-value-num find-max ))
-					)				
-					#t
-					#f
-					)
+			(and
+				(or (not find-min?) (>= split-value-num find-min ))
+				(or (not find-max?) (<= split-value-num find-max ))
+				)				
 			)
 		)
+	;;;;
 	;; find for composite
-		(if dofind?
+		(if do-find?
 		(filter splitcompfound? splits )
 		splits)
 		)
@@ -3151,7 +3131,27 @@ Credit Card, and Income accounts.")))))
 		)
 	) 
 ;;end of section for consolidate
-	
+	(define find-field-number 
+	(list
+	(cons 'none 0)
+	(cons 'account-name 1)
+	(cons 'account-code 2)
+	(cons 'date 		3)
+	(cons 'exact-time 	4)
+	(cons 'reconciled-date 5)
+	(cons 'register-order 6)
+	(cons 'corresponding-acc-name 7)
+	(cons 'corresponding-acc-code 8)
+	(cons 'amount 		9)
+	(cons 'description  10)
+	(cons 'number       11)
+	(cons 't-number     12)
+	(cons 'memo         13)
+	(cons 'notes		14)
+	(cons 'any          15)
+	(cons 'memo/notes   16)
+	)
+  )
   (gnc:report-starting reportname)
   (let* ((document (gnc:make-html-document))
 	(c_account_1 (opt-val gnc:pagename-accounts "Accounts"))
@@ -3223,10 +3223,15 @@ Credit Card, and Income accounts.")))))
 			
 
  ;for find 
-	(set! find-desc? (opt-val pagename-sorting optname-find-descript))
+	(set! find-text? (opt-val pagename-sorting optname-find-text?))
+	(set! find1-field (cdr (assq (opt-val pagename-sorting optname-find1-field )  find-field-number  )))
+	(set! find2-operand (opt-val pagename-sorting optname-find2-operand))
+	(set! find1-text  (string-upcase (opt-val pagename-sorting optname-find1-text)))
+	(set! find2-field (cdr (assq (opt-val pagename-sorting optname-find2-field )  find-field-number  )))
+	(set! find2-text  (string-upcase (opt-val pagename-sorting optname-find2-text)))
+	
 	(set! find-min? (opt-val pagename-sorting optname-find-min))
 	(set! find-max? (opt-val pagename-sorting optname-find-max))
-	(set! find-desc (string-upcase (opt-val pagename-sorting "Description contains")))
 	(set! find-min  (opt-val pagename-sorting "Min Amount"))
 	(set! find-max  (opt-val pagename-sorting "Max Amount"))
 	(set! use-old-running-balance? (opt-val gnc:pagename-display "Use old running balance"))
@@ -3302,24 +3307,52 @@ Credit Card, and Income accounts.")))))
 
 
  ;; for find option
-	(set! dofind? (or find-desc? find-min? find-max?)	)
+	(set! do-find? (or find-text? find-min? find-max?)	)
 	(set! findtitle "")
-	(if dofind?
+	(if do-find?
+		(let* (	 (report-currency (if comm-curr?
+										curr
+										(gnc-default-currency))))
+  
 		(begin
-		(if find-desc?
-			(set! findtitle (string-append findtitle ", containing " find-desc)))
+		(if find-text?
+			(begin
+			(set! findtitle (string-append findtitle text-containing find1-text))
+			(if (not (equal? find2-operand 'none)) 
+				(set! findtitle (string-append findtitle " "
+				(if (equal? find2-operand 'and)
+				text-and
+				(if (equal? find2-operand 'or)
+				text-or
+				(if (equal? find2-operand 'not)
+				text-but-not
+				""))) 
+				find2-text)))
+			))
 		(if find-min? 
 			(begin
-			(set! findtitle (string-append findtitle ", Minimum $" (number->string find-min)))
+			(set! findtitle (string-append findtitle text-minimum (gnc:monetary->string 
+									(gnc:make-gnc-monetary report-currency
+									(gnc:make-gnc-numeric (inexact->exact (* 100 find-min)) 100)  ))))
 			(set! find-min (* 100 find-min))
 			))
 		(if find-max?
 			(begin
-			(set! findtitle (string-append findtitle ", Maximum $" (number->string find-max)))
+			(set! findtitle (string-append findtitle text-maximum (gnc:monetary->string 
+									(gnc:make-gnc-monetary report-currency
+									(gnc:make-gnc-numeric (inexact->exact (* 100 find-max)) 100)  ))))
 			(set! find-max (* 100 find-max))
 			))
-		))
+		)))
 
+;; for find 
+(if (and (not (null? splits)) do-find?)
+	(let(
+		(account-types-to-reverse	(get-account-types-to-reverse options)))
+		(set! splits (filtersplits-found splits account-types-to-reverse consolidate? ))))
+	))
+		
+;;
 
 ;;   for composite transaction corr
 
@@ -3330,10 +3363,6 @@ Credit Card, and Income accounts.")))))
 	
 		(set! payee-hash (make-hash-table) )
 		(set! payee-account-guid-hash (make-hash-table))
-		;; handle find for text before creating the composite entries
-		;((vector-ref (cdr (assq scale-op-val  scale-num)) 0)
-		;(account-types-to-reverse	(get-account-types-to-reverse options)))
-		;		(set! splits (filtersplits-found splits account-types-to-reverse ))
 
 		 (get-the-transactions splits 
 						(opt-val pagename-sorting (N_ "Show Full Account Name"))
@@ -3372,14 +3401,7 @@ Credit Card, and Income accounts.")))))
 		 )))
 		 ; make into else ie. if not consolidate ;
 		
-;; for find 
-		(if dofind?
-			(let(
-				(account-types-to-reverse	(get-account-types-to-reverse options)))
-				(set! splits (filtersplits-found splits account-types-to-reverse ))))
-	))
 		
-;;		
 	
 
 	
@@ -3459,9 +3481,9 @@ Credit Card, and Income accounts.")))))
 ;;
 
   ;;optional section for troubeshooting gnctimeperiod-utilities
-	;; change to (equal? 1 1) to see variables, also change #f to #t on (or consolidate? around line 3177
+	;; change to (equal? 1 1) to see variables, also change #f to #t on (or consolidate? around line 3400
 	;;       use (equal? 1 "a") to hide variables
-	(if (equal? 1 "a")
+	(if (equal? 1 "a") ;; report will fail unless change or consolidate? (see two lines above)
 	(begin
 		(set! period-val " ")
 	  (let* (	   
@@ -3622,8 +3644,8 @@ Credit Card, and Income accounts.")))))
 		  
 		  (gnc:html-markup-p
          (gnc:html-markup/format
-          (_ "The find-desc option is %s.")
-          (gnc:html-markup-b (if find-desc? (_ "true") (_ "false")))))
+          (_ "The find-text option is %s.")
+          (gnc:html-markup-b (if find-text? (_ "true") (_ "false")))))
 
 		  (gnc:html-markup-p
          (gnc:html-markup/format

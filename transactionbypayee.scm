@@ -221,6 +221,7 @@
 
 ;;for running balance
 (define use-old-running-balance? #f)
+(define amount-total-hash (make-hash-table))
 
 ;;for scaling
 (define scale-op-val '*)
@@ -228,7 +229,6 @@
 (define scale-num-numeric (gnc:make-gnc-numeric 1 1))
 
 ;; for consolidate descriptions (create composite  - to combine multiple entries with same payee)
-(define amount-total (gnc-numeric-zero))
 (define curr " ")
 (define comm-curr? #f)
 (define currency-type-num 1)
@@ -240,9 +240,8 @@
 
 (define (sort-test x y var-p var-s comp-p1 comp-p2 comp-s1 comp-s2  )
 	
-	(define (test?  x y)
-	
-	(let (  (primary-x  (var-p x))
+	(define (test?  x y)	
+		(let ((primary-x  (var-p x))
 			(primary-y  (var-p y))
 			(secondary-x  (var-s x))
 			(secondary-y  (var-s y)) )
@@ -252,9 +251,9 @@
 						(comp-s2 secondary-x secondary-y )
 						(string-ci<=? (get-description x) (get-description y)))
 				))
-		)
-		(test? x y)		
-	)			
+	)
+	(test? x y)		
+)			
 	
 
 				
@@ -262,6 +261,7 @@
 (define payee-account-guid-hash (make-hash-table))
 (define currency-type-hash (make-hash-table) )
 (define currency-lookup-hash (make-hash-table) )
+
    	
 ;; routine to sum up all descriptions with same payee and to store account guid
  (define (total-payee-hash-add! payee-hash payee amount payee-account-guid-hash account-guid )
@@ -1250,11 +1250,13 @@
                      "number-cell" (gnc:html-transaction-anchor parent (gnc:monetary-neg split-value))))
             (addto! row-contents " ")))
     (if (used-running-balance column-vector)
-	(begin
-	  (gnc:debug "split is " split)
-	  (gnc:debug "split get balance:" (xaccSplitGetBalance split))
-      (set! amount-total (gnc-numeric-add amount-total  (gnc:gnc-monetary-amount split-value)  GNC-DENOM-AUTO GNC-RND-ROUND))
-	  (addto! row-contents
+	  (begin
+		(gnc:debug "split is " split)
+		(gnc:debug "split get balance:" (xaccSplitGetBalance split))
+		(hash-set! amount-total-hash report-currency  (gnc-numeric-add 
+				(gnc:gnc-monetary-amount split-value) 
+				(hash-ref amount-total-hash report-currency (gnc-numeric-zero))  GNC-DENOM-AUTO GNC-RND-ROUND)) 
+		(addto! row-contents
 		  (gnc:make-html-table-cell/markup
 		   "number-cell"
 		   (gnc:make-gnc-monetary currency
@@ -1263,7 +1265,9 @@
 						(xaccSplitGetBalance split) 
 						((vector-ref (cdr (assq scale-op-val  scale-num)) 0)
 							(xaccSplitGetBalance split) scale-num-numeric currency-frac GNC-RND-ROUND)) 
-					amount-total ))))))
+				(hash-ref amount-total-hash report-currency (gnc-numeric-zero))  ))))))
+
+					
 	(gnc:html-table-append-row/markup! table row-style
                                        (reverse row-contents))
     split-value))
@@ -1280,12 +1284,9 @@
 
   (let* ((row-contents '())
 	 (dummy  (gnc:debug "split-trans is originally" split-trans))
-		(report-currency (if (opt-val gnc:pagename-general optname-common-currency)
-			       (opt-val gnc:pagename-general optname-currency)
-			       (gnc-default-currency) )) ; currency))
-		 (currency-frac (gnc-commodity-get-fraction report-currency))	
-;		 (split-value (gnc:make-gnc-monetary report-currency 
-		 (split-value (gnc:make-gnc-monetary (hash-ref currency-lookup-hash (get-currency-type split-trans)) 
+		(report-currency (hash-ref currency-lookup-hash (get-currency-type split-trans)))
+		(currency-frac (gnc-commodity-get-fraction report-currency))	
+		(split-value (gnc:make-gnc-monetary report-currency 
 			(if (= 1 scale-num-val)
 			(get-split-value split-trans)
 			((vector-ref (cdr (assq scale-op-val  scale-num)) 0)
@@ -1353,15 +1354,14 @@
 	 (if (used-running-balance column-vector)
 	(begin
 	  (gnc:debug "split is " split-trans)
-	  (set! amount-total (gnc-numeric-add amount-total  (gnc:gnc-monetary-amount split-value)  GNC-DENOM-AUTO GNC-RND-ROUND))
+	  (hash-set! amount-total-hash report-currency  (gnc-numeric-add 
+				(gnc:gnc-monetary-amount split-value) 
+				(hash-ref amount-total-hash report-currency (gnc-numeric-zero))  GNC-DENOM-AUTO GNC-RND-ROUND)) 
 	  (addto! row-contents
 		  (gnc:make-html-table-cell/markup
 		   "number-cell"
 			(gnc:make-gnc-monetary report-currency
-		;	(if use-old-running-balance?	is not connected up			
-		;			  (xaccSplitGetBalance split))
-    
-					amount-total )))))
+				(hash-ref amount-total-hash report-currency (gnc-numeric-zero))  ))))) 
     
 	(gnc:html-table-append-row/markup! table row-style
                                        (reverse row-contents))
@@ -2324,7 +2324,7 @@ Credit Card, and Income accounts.")))))
     ;;     (gnc:warn "Splits:" splits)
     (if (not (null? splits))
         (begin
-		  (set! amount-total (gnc-numeric-zero))
+		  (set! amount-total-hash (make-hash-table))
           (if primary-subheading-renderer 
               (primary-subheading-renderer
                (car splits) table width def:primary-subtotal-style used-columns))
@@ -2543,7 +2543,7 @@ Credit Card, and Income accounts.")))))
     ;;     (gnc:warn "Split-trans:" split-transs)
     (if (not (null? list_of_trans))
         (begin
-		  (set! amount-total (gnc-numeric-zero))
+		  (set! amount-total-hash (make-hash-table))
           (if comp-primary-subheading-renderer 
               (comp-primary-subheading-renderer
                (car list_of_trans) (get-primary-key (car list_of_trans)) table width def:primary-subtotal-style used-columns))
@@ -3138,15 +3138,15 @@ Credit Card, and Income accounts.")))))
                                    (used-other-account-name      column-vector)
                                    (used-other-account-full-name column-vector))								   
 								   ""))
-		(hashed-currency (hash-ref currency-type-hash currency currency-type)) ; in case transactions with same description have different currencies
+		(hashed-currency (hash-ref currency-type-hash report-currency currency-type)) ; in case transactions with same description have different currencies
 		
 		(hashkey (string-append  primary-sort "#Yw;" secondary-sort "#Yx;" date-string "#Yy;" descript "#Yz;"
 			acctnamecode "#Zy;" acct-code "#Zx;" acctothernamcod "#Zw;" memo "#Zv;" hashed-currency  ))
 		 )
 		(total-payee-hash-add! payee-hash hashkey split-value-mon payee-account-guid-hash guids)
-		(if (equal? currency-type hashed-currency)
+		(if (equal? currency-type hashed-currency); if we used the current number - add to hash and prepare new number
 				(begin
-				(hash-set! currency-type-hash currency hashed-currency )
+				(hash-set! currency-type-hash report-currency hashed-currency )
 				(set! currency-type-num (+ 1 currency-type-num))
 				(set! currency-type (number->string currency-type-num))
 		))
@@ -3418,6 +3418,8 @@ Credit Card, and Income accounts.")))))
 		(set! list_of_trans (sortpayees payee-hash var-p var-s comp-p1 comp-p2 comp-s1 comp-s2))
 		 ;for find for composite min and max amounts
 	    (set! list_of_trans (filtersplitscomp-found list_of_trans ))
+		
+		; swap hash table keys and values so can look up stored currency string and get currency
 		(hash-for-each  (lambda (key val)	
 						(hash-set! currency-lookup-hash val key))
 						currency-type-hash)
@@ -3586,7 +3588,7 @@ Credit Card, and Income accounts.")))))
 			"the_key"
 		     thekey
 			" "
-			(gnc:monetary->string (gnc:make-gnc-monetary (gnc-default-currency) split-value-comp))
+	;		(gnc:monetary->string (gnc:make-gnc-monetary (hash-ref currency-lookup-hash (get-currency-type current-trans)) split-value-comp))			
 		"  "
 		"num 12 "
 		(gnc-numeric-to-string num12)

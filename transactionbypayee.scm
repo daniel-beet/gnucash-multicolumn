@@ -95,9 +95,26 @@
 
 ;; added for consolidating
 (define consolidated-text "Consolidated")
+(define consolidate-trans-text (N_ "Consolidate Transactions"))
+(define consolidate-case-sensitive-text  (N_ "--  make consolidation case-sensitive"))
+
+(define descript-titlecase-text (N_ "--   Titlecase the first chracter in each word in description"))
+; other option is titlecase - delete this comment
+ 
 
 ;; add for scaling
 (define scaling-text "Note: amount and balance")
+
+;; added for flagging imbalances when account name is primary key
+(define optname-show-imbalance
+  (N_ "Note any imbalance"))
+(define opthelp-show-imbalance
+  (N_ "Make a footnote if there is an imbalance when account name or account code is selected as the primary key and find not used"))
+ 
+(define text-note-account " Note - account   ")
+(define text-changed-in-value " changed in value by ")
+(define text-dash (_ "-")) ; printed to indicate imbalance was checked for
+
 
 
 ;; this is step 2 of 4
@@ -228,6 +245,8 @@
 (define scale-num-val 1)
 (define scale-num-numeric (gnc:make-gnc-numeric 1 1))
 
+(define description-titlecase? #t)
+
 ;; for consolidate descriptions (create composite  - to combine multiple entries with same payee)
 (define curr " ")
 (define comm-curr? #f)
@@ -263,11 +282,11 @@
 (define currency-lookup-hash (make-hash-table) )
 
    	
-;; routine to sum up all descriptions with same payee and to store account guid
- (define (total-payee-hash-add! payee-hash payee amount payee-account-guid-hash account-guid )
-	(let ((capital-payee (string-capitalize payee)))
-     	 (hash-set! payee-hash capital-payee  (gnc-numeric-add amount  (hash-ref payee-hash capital-payee (gnc-numeric-zero))  GNC-DENOM-AUTO GNC-RND-ROUND)) 
-		 (hash-set! payee-account-guid-hash capital-payee account-guid )))
+;; routine to sum up all descriptions with same payee and to store account guid and also non uppercase description
+ (define (total-payee-hash-add! payee-hash payee amount payee-account-guid-hash guids+description )
+	(begin
+     	 (hash-set! payee-hash payee  (gnc-numeric-add amount  (hash-ref payee-hash payee (gnc-numeric-zero))  GNC-DENOM-AUTO GNC-RND-ROUND)) 
+		 (hash-set! payee-account-guid-hash payee guids+description )))
 								   	
 (define (get-primary-key transaction)
 	(let* (
@@ -344,14 +363,13 @@
 (define (get-currency-type transaction)
 	(let* (
 			(thekey (car transaction))
-			(startcurr (string-contains thekey "#Zv;"))
+			(startcurr (string-contains thekey "#Zu;"))
 			(currency-type (if (< (+ startcurr 4) (string-length thekey)) 
 							(string-copy thekey (+ startcurr 4))
 							;(string-take-right thekey (+ startcurr 4))
 							" ")))
 			currency-type)
-	)
-	
+)
 (define (get-memo transaction)
 	(let* (
 			(thekey (car transaction))
@@ -361,7 +379,18 @@
 						(string-copy thekey  (+ startmem 4) endmemo)
 						" ")))
 			memo)
-	)	
+)	
+	
+(define (get-reverse-sign? transaction)
+	(let* (
+			(thekey (car transaction))
+			(end  (string-contains thekey "#Zu;"))
+			(start (string-contains thekey "#Zv;"))
+			(rev-sign (if  (< 4 (- end start))
+						#t
+						#f)))
+			rev-sign)
+)	
 	
 (define (get-description transaction)
 	(let* (
@@ -373,6 +402,15 @@
 						" ")))
 			description)
 	)
+	
+(define (get-description-verbatim transaction)
+;; the actual description entered by user - removes problems with upper and lower case
+	(let* (
+		(thekey (car transaction))
+		(descript (caddr (hash-ref payee-account-guid-hash thekey ))))
+		(if descript
+		descript
+		"")))
 (define (get-namecode transaction)
 	(let* (
 			(thekey (car transaction))
@@ -420,7 +458,7 @@
 ;; we stored (account-guid (gncAccountGetGUID account))
 	(let* (
 		(thekey (car transaction))
-		(accountguid (cdr (hash-ref payee-account-guid-hash thekey ))))
+		(accountguid (cadr (hash-ref payee-account-guid-hash thekey ))))
 		(if accountguid
 		accountguid
 		"")))
@@ -468,6 +506,28 @@
 		(if acctguid 
 			(gnc:comp-register-guid "acct-guid=" acctguid)
 			"")))
+
+
+;; for imbalance
+(define (gnc:accounts-imbalance start-date-tp end-date-tp)
+;; returns list of accounts starting with the letters "imbalanc"  which do not have a zero (0)
+;; change in the balance between the start date and the end date
+	(let* (
+		(all-accounts (gnc-account-get-descendants-sorted 
+							(gnc-get-current-root-account)))
+		)
+		(filter (lambda (acct)
+			(if (string-prefix-ci? "imbalanc" (gnc-account-get-full-name acct))
+				;; check if the change in balance from the 'from' date to the 'to' date.
+				;; is 0
+				(if (equal? (gnc-numeric-zero) (gnc:account-get-balance-interval acct start-date-tp end-date-tp #f))
+					#f
+					#t)
+				#f))
+		  all-accounts)
+))
+;; end for imbalance
+
 			
 (define (sortpayees payee-hash var-p var-s comp-p1 comp-p2 comp-s1 comp-s2)(sort (hash-map->list cons payee-hash) 
 			;1 sort by primary key and secondary key
@@ -1162,6 +1222,12 @@
 	 (split-value (if (= 1 scale-num-val)
 			mon-amount
 			mon-scaled))
+	(split-value-coll 			; need "correct" sign for summations
+			(if (member account-type account-types-to-reverse) 
+			    (gnc:make-gnc-monetary currency (gnc-numeric-neg (gnc:gnc-monetary-amount split-value)))
+			    split-value))
+		
+	
 			   )
     
     (if (used-date column-vector)
@@ -1204,7 +1270,9 @@
         (addto! row-contents
                 (if transaction-row?
                     (gnc:make-html-table-cell/markup "text-cell"
-                        (xaccTransGetDescription parent))
+						(if description-titlecase?
+						(string-titlecase (xaccTransGetDescription parent))
+                        (xaccTransGetDescription parent)))
                     " ")))
     
     (if (used-memo column-vector)
@@ -1254,7 +1322,7 @@
 		(gnc:debug "split is " split)
 		(gnc:debug "split get balance:" (xaccSplitGetBalance split))
 		(hash-set! amount-total-hash report-currency  (gnc-numeric-add 
-				(gnc:gnc-monetary-amount split-value) 
+				(gnc:gnc-monetary-amount split-value-coll) 
 				(hash-ref amount-total-hash report-currency (gnc-numeric-zero))  GNC-DENOM-AUTO GNC-RND-ROUND)) 
 		(addto! row-contents
 		  (gnc:make-html-table-cell/markup
@@ -1270,7 +1338,7 @@
 					
 	(gnc:html-table-append-row/markup! table row-style
                                        (reverse row-contents))
-    split-value))
+    split-value-coll))
 
 
 ;;
@@ -1291,6 +1359,9 @@
 			(get-split-value split-trans)
 			((vector-ref (cdr (assq scale-op-val  scale-num)) 0)
 							(get-split-value split-trans) scale-num-numeric currency-frac GNC-RND-ROUND))))
+		(split-value-coll (if (get-reverse-sign? split-trans)
+			    (gnc:make-gnc-monetary report-currency (gnc-numeric-neg (gnc:gnc-monetary-amount split-value)))
+			    split-value))
 		)
     
     (if (used-date column-vector)
@@ -1309,7 +1380,9 @@
         (addto! row-contents
                 (if transaction-row?
                     (gnc:make-html-table-cell/markup "text-cell"
-                       (get-description split-trans)  )
+					   (if description-titlecase?
+						(string-titlecase (get-description-verbatim split-trans))                     
+                        (get-description-verbatim split-trans))  )
 	                 " ")))
     
     (if (used-memo column-vector)
@@ -1355,7 +1428,7 @@
 	(begin
 	  (gnc:debug "split is " split-trans)
 	  (hash-set! amount-total-hash report-currency  (gnc-numeric-add 
-				(gnc:gnc-monetary-amount split-value) 
+				(gnc:gnc-monetary-amount split-value-coll) 
 				(hash-ref amount-total-hash report-currency (gnc-numeric-zero))  GNC-DENOM-AUTO GNC-RND-ROUND)) 
 	  (addto! row-contents
 		  (gnc:make-html-table-cell/markup
@@ -1365,7 +1438,7 @@
     
 	(gnc:html-table-append-row/markup! table row-style
                                        (reverse row-contents))
-    split-value))
+    split-value-coll))
 
 ;end section -consolite
 	
@@ -1817,8 +1890,8 @@
 	(gnc:register-trep-option
 		(gnc:make-number-range-option pagename-sorting (N_ "Max Amount")
 		"j4" (N_ "Maximum amount to show")
-			1000.0  ;; default
-		 -800000.0  ;; lower bound
+			20000.0  ;; default
+		  -800000.0  ;; lower bound
 		  5000000.0 ;; upper bound
 			2.0     ;; number of decimals
 		  100.0     ;; step size
@@ -1910,14 +1983,17 @@
    ;; One list per option here with: option-name, sort-tag,
    ;; help-string, default-value
    (list
-    (list (N_ "Consolidate Transactions")     "a"  (N_ "Combine transactions which have the same payee or description") #f)
-    (list (N_ "Date")                         "a1" (N_ "Display the date?") #t)
-    (list (N_ "Reconciled Date")              "a2" (N_ "Display the reconciled date?") #f)
+    (list consolidate-trans-text		     "a"  (N_ "Combine transactions which have the same payee or description") #f)
+    (list consolidate-case-sensitive-text    "a1"  (N_ "when not checked \"A\" and \"a\" are considered to be the same letter in comparing descriptions") #f)
+   (list (N_ "Date")                         "a2"  (N_ "Display the date?") #t)
+    (list (N_ "Reconciled Date")              "a3" (N_ "Display the reconciled date?") #f)
     (if (qof-book-use-split-action-for-num-field (gnc-get-current-book))
         (list (N_ "Num/Action")               "b"  (N_ "Display the check number?") #t)
         (list (N_ "Num")                      "b"  (N_ "Display the check number?") #t))
     (list (N_ "Description")                  "c"  (N_ "Display the description?") #t)
-    (list (N_ "Notes")                        "d2" (N_ "Display the notes if the memo is unavailable?") #t)
+    (list descript-titlecase-text            "s"  (N_ "Titlecase The First Letter in Each Word") #t)
+  ;; note the "memo"  option in between here	
+	(list (N_ "Notes")                        "d2" (N_ "Display the notes if the memo is unavailable?") #t)
     (list (N_ "Account Name")                 "e"  (N_ "Display the account name?") #f)
     (list (N_ "Use Full Account Name")        "f"  (N_ "Display the full account name?") #t)
     (list (N_ "Account Code")                 "g"  (N_ "Display the account code?") #f)
@@ -1929,7 +2005,11 @@
     (list (N_ "Price")                        "l"  (N_ "Display the shares price?") #f)
     ;; note the "Amount" multichoice option in between here
     (list (N_ "Running Balance")              "n"  (N_ "Display a running balance?") #f)
-    (list (N_ "Totals")                       "o"  (N_ "Display the totals?") #t)))
+    (list (N_ "Totals")                       "o"  (N_ "Display the totals?") #t)
+    ;; note the "sign reverse" multichoice option in between here
+    (list (N_ "Use old running balance")      "q"  (N_ "Use old method of computing running balance , may need for different currencies") #f)
+    (list optname-show-imbalance              "r"  opthelp-show-imbalance #t)
+	))
 
   (if (qof-book-use-split-action-for-num-field (gnc-get-current-book))
       (gnc:register-trep-option
@@ -1974,12 +2054,12 @@
 Credit Card, and Income accounts.")))))
 
 
-    (gnc:register-trep-option
-     (gnc:make-simple-boolean-option
-     gnc:pagename-display (N_ "Use old running balance")
-     "q" 
-      (N_ "Use old method of computing running balance , may need for different currencies")
-      #f))
+  ;  (gnc:register-trep-option
+ ;    (gnc:make-simple-boolean-option
+ ;    gnc:pagename-display (N_ "Use old running balance")
+ ;    "q" 
+ ;     (N_ "Use old method of computing running balance , may need for different currencies")
+ ;     #f))
 	  
 
   (gnc:options-set-default-section gnc:*transaction-report-options*
@@ -2919,7 +2999,7 @@ Credit Card, and Income accounts.")))))
 
   	
 ;;
-(define (get-the-transactions splits account-full-name? account-code? primary-comp-key secondary-comp-key)
+(define (get-the-transactions splits account-full-name? account-code? consolidate-case-sensitive? primary-comp-key secondary-comp-key)
 	 	 	
 (define (set-date-tm trans-date-tm sort-date-type )
 	(case sort-date-type
@@ -3018,7 +3098,9 @@ Credit Card, and Income accounts.")))))
 		((10) ; 'description 
 			(let* (
 				(parent (xaccSplitGetParent split))
-				(descript  (string-capitalize (xaccTransGetDescription parent)))
+				(descript (if consolidate-case-sensitive?
+						(xaccTransGetDescription parent)
+						(string-capitalize (xaccTransGetDescription parent))))
 				)
 				(if (< 0 (string-length  descript))
 					descript
@@ -3036,12 +3118,15 @@ Credit Card, and Income accounts.")))))
 				(parent (xaccSplitGetParent split))				
 				(memo  (xaccSplitGetMemo split))
 				(notes (xaccTransGetNotes parent)) 
-				)
-				(if (< 0 (string-length  memo))
+				(note-memo (if (< 0 (string-length  memo))
 					memo
 					(if (and (< 0 (string-length  notes)) (used-notes column-vector))
 					notes				
-					" "))
+					" ")))
+				)
+				(if consolidate-case-sensitive?
+					note-memo
+					(string-upcase note-memo))
 			))
 	))
 
@@ -3055,9 +3140,6 @@ Credit Card, and Income accounts.")))))
 ;		(account-other (xaccSplitGetOtherSplit split))
 		(account-guid (gncAccountGetGUID account))
  		(trans-guid (gncTransGetGUID parent ))
-		(guids (cons 
-				trans-guid
-				account-guid))
 		(acctfull (gnc-account-get-full-name account))
 	    (acctgetnam  (xaccAccountGetName account))
 		
@@ -3068,9 +3150,19 @@ Credit Card, and Income accounts.")))))
 ;       (shareprice  (xaccSplitGetSharePrice split))
 
 		(column-vector (build-column-used options))
-		(descript  (if (used-description column-vector)
-			(string-capitalize (xaccTransGetDescription parent))
-				""))
+		(descript-raw  (if (used-description column-vector)
+						(xaccTransGetDescription parent)
+						" "))
+		(guids+description (list 
+				trans-guid 
+				account-guid
+				descript-raw)
+				)
+		
+		(descript (if consolidate-case-sensitive?
+					descript-raw
+					(string-upcase descript-raw)
+					))
 				
         (currency (if (not (null? account))
                        (xaccAccountGetCommodity account)
@@ -3084,11 +3176,13 @@ Credit Card, and Income accounts.")))))
         (account-type (xaccAccountGetType account))
 		(account-types-to-reverse	(get-account-types-to-reverse options))
 	    (trans-date (gnc-transaction-get-date-posted parent))
-
+		(member-reverse-sign (if (member account-type account-types-to-reverse) 
+								"r"
+								""))
 		(split-value (gnc:exchange-by-pricedb-nearest
 		       (gnc:make-gnc-monetary 
 				currency
-			(if (member account-type account-types-to-reverse) 
+			(if (equal? member-reverse-sign "r") 
 			    (gnc-numeric-neg damount)
 			    damount))
 		       report-currency
@@ -3103,7 +3197,9 @@ Credit Card, and Income accounts.")))))
 	    (date-string (if (> 5 sort-date-type)
 						(strftime "%Y%m%d" (set-date-tm tm sort-date-type))
 						""))
-						
+		
+		; use composite sort to read into primary and secondary sort the item, such as description
+		; can not convert everything to upper case here because the marker #Yv; is used in account code
 		(primary-sort (composite-sort primary-comp-key split column-vector))
 		(secondary-sort (composite-sort secondary-comp-key split column-vector))
 		
@@ -3124,6 +3220,9 @@ Credit Card, and Income accounts.")))))
 						(xaccTransGetNotes parent)
 						memo))
 				""))
+		(memo (if consolidate-case-sensitive?
+					memo
+					(string-upcase memo)))
 	
 		(acctnamecode (if (or (used-account-name column-vector) (used-account-code column-vector))
 						(account-namestring account
@@ -3140,10 +3239,11 @@ Credit Card, and Income accounts.")))))
 								   ""))
 		(hashed-currency (hash-ref currency-type-hash report-currency currency-type)) ; in case transactions with same description have different currencies
 		
-		(hashkey (string-append  primary-sort "#Yw;" secondary-sort "#Yx;" date-string "#Yy;" descript "#Yz;"
-			acctnamecode "#Zy;" acct-code "#Zx;" acctothernamcod "#Zw;" memo "#Zv;" hashed-currency  ))
+		(hashkey (string-append  primary-sort "#Yw;" secondary-sort "#Yx;" date-string "#Yy;" 
+						 descript "#Yz;"
+			acctnamecode "#Zy;" acct-code "#Zx;" acctothernamcod "#Zw;" memo "#Zv;" member-reverse-sign "#Zu;" hashed-currency  ))
 		 )
-		(total-payee-hash-add! payee-hash hashkey split-value-mon payee-account-guid-hash guids)
+		(total-payee-hash-add! payee-hash hashkey split-value-mon payee-account-guid-hash guids+description)
 		(if (equal? currency-type hashed-currency); if we used the current number - add to hash and prepare new number
 				(begin
 				(hash-set! currency-type-hash report-currency hashed-currency )
@@ -3151,7 +3251,7 @@ Credit Card, and Income accounts.")))))
 				(set! currency-type (number->string currency-type-num))
 		))
 		(if (> (length rest) 0) 
-			(get-the-transactions rest account-full-name? account-code? primary-comp-key secondary-comp-key ))
+			(get-the-transactions rest account-full-name? account-code? consolidate-case-sensitive? primary-comp-key secondary-comp-key ))
 		)
 	) 
 ;;end of section for consolidate
@@ -3232,9 +3332,10 @@ Credit Card, and Income accounts.")))))
 ;for consolidate
 		(primary-comp-key  (cdr (assq primary-key  sort-key-number  )))
 		(secondary-comp-key  (cdr (assq secondary-key  sort-key-number  )))
-		(consolidate? (opt-val gnc:pagename-display "Consolidate Transactions"))
+		(consolidate? (opt-val gnc:pagename-display consolidate-trans-text))
+		(consolidate-case-sensitive? (opt-val gnc:pagename-display consolidate-case-sensitive-text))
+		
 	
-
 	(void-status (opt-val gnc:pagename-accounts optname-void-transactions))
 	    (splits '())
         (query (qof-query-create-for-splits)))
@@ -3244,7 +3345,8 @@ Credit Card, and Income accounts.")))))
 	(set! scale-num-val  (opt-val the_tab "Scale Number Option"))
 	(set! scale-num-numeric   (gnc:make-gnc-numeric (inexact->exact (* 100 scale-num-val)) 100))
 
-			
+	(set! description-titlecase? (opt-val gnc:pagename-display descript-titlecase-text))
+		
 
  ;for find 
 	(set! find-text? (opt-val pagename-sorting optname-find-text?))
@@ -3395,6 +3497,7 @@ Credit Card, and Income accounts.")))))
 		 (get-the-transactions splits  ;; routine to consolidate the transactions
 						(opt-val pagename-sorting (N_ "Show Full Account Name"))
 						(opt-val pagename-sorting (N_ "Show Account Code"))
+						consolidate-case-sensitive?
 						primary-comp-key secondary-comp-key
 						)
 		(let* (
@@ -3726,7 +3829,56 @@ Credit Card, and Income accounts.")))))
                  document 
                  table
 				))
-                (qof-query-destroy query))
+                (qof-query-destroy query)
+				
+;; show any imbalances if option choosen
+;	(if (equal? 1 "a")
+	(if (and (opt-val gnc:pagename-display optname-show-imbalance)
+			(or (equal? primary-key 'account-name) (equal? primary-key 'account-code))
+			(not do-find?))
+	(begin	
+	  (let* (	   
+	   (count 0)
+	   (imbalance-val "")
+	   (accounts-imbalance (gnc:accounts-imbalance begindate enddate))
+	    (numtransact (length accounts-imbalance ))
+	   )
+	   (gnc:html-document-add-object!
+		document
+       (gnc:make-html-text 
+	   (gnc:html-markup-p
+         (gnc:html-markup/format
+          text-dash   ; Few will realize it but report will show dash  if imbalance was checked for 
+          ))))
+		  
+	  (while (< count numtransact )
+		(begin 	
+		(let* (	
+			(current-account (list-ref accounts-imbalance count ))			
+			)		
+		 (set! imbalance-val (string-append 
+			  text-note-account 
+			(gnc-account-get-full-name current-account)
+			  text-changed-in-value
+			(gnc:monetary->string (gnc:make-gnc-monetary (xaccAccountGetCommodity current-account) 		
+				(gnc:account-get-balance-interval current-account begindate enddate #f)))
+		))
+		  (set! count (+ count 1))		  
+	  )
+		(gnc:html-document-add-object!
+		document
+		(gnc:make-html-text 
+		(gnc:html-markup-p
+         (gnc:html-markup/format
+          (_ "  %s") 
+          (gnc:html-markup-b imbalance-val)))		  
+		))	    
+	  ))   
+	)))
+;end for showing imbalance	
+				
+				
+				)
               ;; error condition: no splits found
               (let ((p (gnc:make-html-text)))
                 (gnc:html-text-append! 

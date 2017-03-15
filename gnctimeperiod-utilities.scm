@@ -65,6 +65,8 @@
 (define 5yr_ago (number->string (- this_year 5)))
 (define alltime "All Time")
 
+
+
 (define fullyear "Full year")
 (define last_qtr "Last Quarter")
 (define 1st_hlf "1st Half")
@@ -79,6 +81,8 @@
 (define yeartodate "Year to date")
 (define yesterday "Yesterday")
 (define today "Today")
+(define 2fullyears "2 full years")
+(define 5fullyears "5 full years")
 
 
 (define last_wk "Last week")
@@ -89,6 +93,8 @@
 (define prev_7days "previous 7 Days")
 (define prev_30days "previous 30 Days")
 (define prev_31days "previous 31 Days")
+(define prev_90days "previous 90 Days")
+(define prev_365days "previous 365 Days")
 (define last_7days "Last 7 Days")
 (define last_30 "Last 30 days")
 (define last_90 "Last 90 Days")
@@ -110,11 +116,13 @@
 (define multiply "multiply")
 (define divide "divide")
 
+(define month-of "Month of ")
+
 (define gnc:list-years 
    (list (list->vector
              (list 'alltime
                    (N_ alltime)
-                   (N_ "from 1901 till now")))
+                   (N_ "from 1900 till now")))
             (list->vector
              (list 'last-yr
                    (N_ lastyr)
@@ -142,11 +150,11 @@
 		    (list->vector
              (list 'yr_minus4
                    (N_ 4yr_ago)
-                   (N_ "Help for third option.")))
+                   (N_ "4 years ago")))
             (list->vector
              (list 'yr_minus5
                    (N_ 5yr_ago)
-                   (N_ "The fourth option rules!")))
+                   (N_ "5 years ago")))
 	)
  )
     
@@ -158,51 +166,59 @@
             (list->vector
              (list '1st_hlf
                    (N_ 1st_hlf)
-                   (N_ "Help for second option.")))
+                   (N_ "First six months of the year")))
 			(list->vector
              (list '2nd_hlf
                    (N_ 2nd_hlf)
-                   (N_ "Help for first option.")))
+                   (N_ "Last six months of the year")))
 			(list->vector
              (list '1st_qtr
                    (N_ 1st_qtr)
-                   (N_ "Help for second option.")))
+                   (N_ "Jan - March")))
             (list->vector
              (list '2nd_qtr
                    (N_ 2nd_qtr)
-                   (N_ "Help for third option.")))
+                   (N_ "April - June")))
 			(list->vector
              (list '3rd_qtr
                    (N_ 3rd_qtr)
-                   (N_ "Help for third option.")))
+                   (N_ "July - September")))
 			(list->vector
              (list '4th_qtr
                    (N_ 4th_qtr)
-                   (N_ "Help for third option.")))
+                   (N_ "October - December")))
 			(list->vector
              (list 'weektodate
                    (N_ weektodate)
-                   (N_ "this year")))
+                   (N_ "Sunday thru today")))
 			(list->vector
              (list 'mnthtodate
                    (N_ mnthtodate)
-                   (N_ "Help for third option.")))
+                   (N_ "from the 1st thru today")))
 			(list->vector
              (list 'qrtrtodate
                    (N_ qrtrtodate)
-                   (N_ "Help for third option.")))
+                   (N_ "from the start of the quarter thru today")))
 			(list->vector
              (list 'yeartodate
                    (N_ yeartodate)
-                   (N_ "this year")))
+                   (N_ "from January 1 thru today")))
 			(list->vector
              (list 'yesterday
                    (N_ yesterday)
-                   (N_ "this year")))
+                   (N_ "yesterday")))
 			(list->vector
              (list 'today
                    (N_ today)
-                   (N_ "this year")))
+                   (N_ "today")))
+			(list->vector
+             (list '2fullyears
+                   (N_ 2fullyears)
+                   (N_ "2 entire years")))
+			(list->vector
+             (list '5fullyears
+                   (N_ 5fullyears)
+                   (N_ "5 entire years")))
            
 	)
 )
@@ -210,55 +226,64 @@
     (list (list->vector
              (list 'last_qtr
                    (N_ last_qtr)
-                   (N_ "Help for first option.")))
+                   (N_ "last quarter")))
 			(list->vector
              (list 'last_3mnth
                    (N_ last_3mnth)
-                   (N_ "Help for third option.")))
+                   (N_ "3 months ending with last month")))
             (list->vector
              (list 'lastmonth
                    (N_ lastmonth)
-                   (N_ "Help for first option.")))
+                   (N_ "last month")))
 			(list->vector
              (list 'last_wk
                    (N_ last_wk)
-                   (N_ "Help for third option.")))
+                   (N_ "last week, ending with Saturday")))
 			(list->vector
              (list 'last_6mnth
                    (N_ last_6mnth)
-                   (N_ "Help for third option.")))
+                   (N_ "6 months ending with last month ")))
 			(list->vector
              (list 'last_12mnth
                    (N_ last_12mnth)
-                   (N_ "Help for third option.")))
+                   (N_ "12 months (one year) ending with last month")))
 			(list->vector
              (list 'last_30
                    (N_ last_30)
-                   (N_ "Help for third option.")))
+                   (N_ "30 days including today")))
 			(list->vector
              (list 'last_90
                    (N_ last_90)
-                   (N_ "Help for third option.")))
+                   (N_ "90 days including today")))
 			(list->vector
              (list 'last_365
                    (N_ last_365)
-                   (N_ "Help for third option.")))
+                   (N_ "365 days including today")))
 			(list->vector
              (list 'last_7days
                    (N_ last_7days)
-                   (N_ "Help for third option.")))
+                   (N_ "7 days including today")))
 			(list->vector
              (list 'prev_7days
                    (N_ prev_7days)
-                   (N_ "Help for third option.")))
+                   (N_ "7 days ending yesterday")))
 			(list->vector
              (list 'prev_30days
                    (N_ prev_30days)
-                    (N_ "Help for third option.")))
+                    (N_ "30 days ending yesterday")))
 	        (list->vector
              (list 'prev_31days
                    (N_ prev_31days)
-                    (N_ "Help for third option.")))
+                    (N_ "31 days ending yesterday")))
+			(list->vector
+             (list 'prev_90days
+                   (N_ prev_90days)
+                    (N_ "90 days ending yesterday")))
+	        (list->vector
+             (list 'prev_365days
+                   (N_ prev_365days)
+                    (N_ "365 days ending yesterday")))
+	        
 	          
 			
 			
@@ -270,51 +295,51 @@
 			(list->vector
              (list '0
                    (N_ Jan)
-                   (N_ "Help for third option.")))
+                   (N_ "report just this month")))
 			(list->vector
              (list '1
                    (N_ Feb)
-                   (N_ "Help for third option.")))
+                   (N_ "report just this month")))
 		    (list->vector
              (list '2
                    (N_ Mar)
-                   (N_ "Help for third option.")))
+                   (N_ "report just this month")))
 		    (list->vector
              (list '3
                    (N_ Apr)
-                   (N_ "Help for third option.")))
+                   (N_ "report just this month")))
             (list->vector
              (list '4
                    (N_ May)
-                   (N_ "Help for third option.")))
+                   (N_ "report just this month")))
             (list->vector
              (list '5
                    (N_ Jun)
-                   (N_ "Help for third option.")))
+                   (N_ "report just this month")))
             (list->vector
              (list '6
                    (N_ Jul)
-                   (N_ "Help for third option.")))
+                   (N_ "report just this month")))
             (list->vector
              (list '7
                    (N_ Aug)
-                   (N_ "Help for third option.")))
+                   (N_ "report just this month")))
             (list->vector
              (list '8
                    (N_ Sep)
-                   (N_ "Help for third option.")))
+                   (N_ "report just this month")))
             (list->vector
              (list '9
                    (N_ Oct)
-                   (N_ "Help for third option.")))
+                   (N_ "report just this month")))
             (list->vector
              (list '10
                    (N_ Nov)
-                   (N_ "Help for third option.")))
+                   (N_ "report just this month")))
             (list->vector
              (list '11
                    (N_ Dec)
-                   (N_ "The fourth option rules!")))
+                   (N_ "report just this month")))
 	)
 )
 
@@ -547,11 +572,24 @@
 							(set-tm:mday period_end thisday)
 							(set-tm:year period_start year_end)
 							(set-tm:mon period_start thismonth)
-							(set-tm:mday period_start thisday)
-							
+							(set-tm:mday period_start thisday)							
 							)
+			(if (equal? period-val '2fullyears)
+					(begin
+						(set-tm:mon period_end 11 ) 
+		                (set-tm:mday period_end 31 )
+						(set-tm:mon period_start 0)
+						(set-tm:year period_start (- year_end 1))						    
+					)
+			(if (equal? period-val '5fullyears)
+					(begin
+						(set-tm:mon period_end 11 ) 
+		                (set-tm:mday period_end 31 )
+						(set-tm:mon period_start 0)
+						(set-tm:year period_start (- year_end 4))						    
+					)
 			
-			)))))))))))))
+			)))))))))))))))
 			(set-tm:sec period_start 0)
 			(set-tm:min period_start 0)
 			(set-tm:hour period_start 0)							
@@ -723,9 +761,25 @@
 							(set! period_end (gnc:decrement-date period_end 1 )) 
 							(set! period_start (gnc:decrement-date period_end 30))	
 							)
+			(if (equal? last-val 'prev_90days)
+						(begin
+							(set-tm:year period_end year_end)
+							(set-tm:mon period_end thismonth)
+							(set-tm:mday period_end thisday)
+							(set! period_end (gnc:decrement-date period_end 1 )) 
+							(set! period_start (gnc:decrement-date period_end 89))	
+							)
+			(if (equal? last-val 'prev_365days)
+						(begin
+							(set-tm:year period_end year_end)
+							(set-tm:mon period_end thismonth)
+							(set-tm:mday period_end thisday)
+							(set! period_end (gnc:decrement-date period_end 1 )) 
+							(set! period_start (gnc:decrement-date period_end 364))	
+							)
 			
 			
-			)))))))))))))						
+			)))))))))))))))						
 	   ))
 	     
 	   

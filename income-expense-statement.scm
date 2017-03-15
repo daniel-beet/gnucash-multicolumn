@@ -1,10 +1,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; income-expense-statement.scm: income statement (a.k.a. Profit & Loss)
+;; income-statement.scm: income statement (a.k.a. Profit & Loss)
 ;; 
 ;; By David Montenegro <sunrise2000@comcast.net>
 ;;  2004.07.13 - 2004.07.14
 ;; Modified for period choices by D.B.DOughty (dbdoughty gmail.com)
-;;  2017.02.24
+;;  2017.03.15
 ;;  * BUGS:
 ;;    
 ;;    This code makes the assumption that you want your income
@@ -42,19 +42,21 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-module (gnucash report standard-reports income-expense-statement))
+(define-module (gnucash report standard-reports income-statement))
 (use-modules (gnucash main)) ;; FIXME: delete after we finish modularizing.
 (use-modules (gnucash printf))
 (use-modules (gnucash gnc-module))
 (use-modules (gnucash gettext))
 
-(use-modules (gnucash report-other-menu))
+;(use-modules (gnucash report-other-menu))
 
 ;;following line is step 1 of 4 neded to add gnctimeperiod-utilities
 (use-modules (gnucash gnctimeperiod-utilities))
+
 (use-modules (gnucash gnome-utils))
 (gnc:module-load "gnucash/gnome-utils" 0)
 (gnc:module-load "gnucash/report/utility-reports" 0)
+(gnc:module-load "gnucash/report/report-system" 0)
 
 
 ;; this is section 2 of 4
@@ -183,6 +185,16 @@
   (N_ "Display in standard, income first, order"))
 (define opthelp-standard-order
   (N_ "Causes the report to display in the standard order, placing income before expenses."))
+  
+ (define optname-show-imbalance
+  (N_ "Note any imbalance"))
+(define opthelp-show-imbalance
+  (N_ "Make a footnote if there is an imbalance"))
+ 
+(define text-note-account " Note - account   ")
+(define text-changed-in-value " changed in value by ")
+(define text-dash (_ "-")) ; printed to indicate imbalance was checked for
+		
 
 ;; options generator
 (define (income-statement-options-generator-internal reportname)
@@ -203,9 +215,10 @@
 ;; To add gnctimeperiod-utilities comment out  old  period over which to report income
 ;; and add section 3
 ;;
- ;;   (gnc:options-add-date-interval!
- ;;    options gnc:pagename-general 
- ;;    optname-start-date optname-end-date "cc")
+    ;; period over which to report income
+ ;; (gnc:options-add-date-interval!
+ ;;  options gnc:pagename-general 
+ ;;  optname-start-date optname-end-date "cc")
 
 ;; 
  ;; section 3 of 4 to add gnctimeperiod-utilities
@@ -217,7 +230,7 @@
 	;	(gnc:make-multichoice-option
 		the_tab (N_ text-whichperiod)
 		"ca" (N_ "Select which time period to use")
-		'period
+		'customdates
 ;;		gnc:list-datechoices
 ;;		))
 		gnc:list-datechoices #f
@@ -387,6 +400,12 @@
      (gnc:make-simple-boolean-option
       gnc:pagename-display optname-standard-order
       "l" opthelp-standard-order #t))
+	  
+	 (add-option
+     (gnc:make-simple-boolean-option
+      gnc:pagename-display optname-show-imbalance
+      "m" opthelp-show-imbalance #t)) 
+
     
     ;; closing entry match criteria
     ;; 
@@ -409,6 +428,26 @@
     (gnc:options-set-default-section options gnc:pagename-accounts)
     
     options))
+	
+;; for imbalance
+(define (gnc:accounts-imbalance start-date-tp end-date-tp)
+;; returns list of accounts starting with the letters "imbalanc"  which do not have a zero (0)
+;; change in the balance between the start date and the end date
+	(let* (
+		(all-accounts (gnc-account-get-descendants-sorted 
+							(gnc-get-current-root-account)))
+		)
+		(filter (lambda (acct)
+			(if (string-prefix-ci? "imbalanc" (gnc-account-get-full-name acct))
+				;; check if the change in balance from the 'from' date to the 'to' date.
+				;; is 0
+				(if (equal? (gnc-numeric-zero) (gnc:account-get-balance-interval acct start-date-tp end-date-tp #f))
+					#f
+					#t)
+				#f))
+		  all-accounts)
+	))
+	;; end for imbalance
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; income-statement-renderer
@@ -559,9 +598,8 @@
          ;; exchange rates calculation parameters
 	 (exchange-fn
 	  (gnc:case-exchange-fn price-source report-commodity end-date-tp))
-
 	 )
-    	
+    
     ;; Wrapper to call gnc:html-table-add-labeled-amount-line!
     ;; with the proper arguments.
     (define (add-subtotal-line table pos-label neg-label signed-balance)
@@ -946,9 +984,50 @@
                (gnc:html-make-exchangerates 
                 report-commodity exchange-fn accounts)))
 	  (gnc:report-percent-done 100)
-	  
+
+;; show any imbalances if option choosen	  
+	(if (get-option gnc:pagename-display optname-show-imbalance)
+	(begin	
+	  (let* (	   
+	   (count 0)
+	   (imbalance-val "")
+	   (accounts-imbalance (gnc:accounts-imbalance start-date-tp end-date-tp))
+	    (numtransact (length accounts-imbalance ))
+	   )
+	   (gnc:html-document-add-object!
+		doc
+       (gnc:make-html-text 
+	   (gnc:html-markup-p
+         (gnc:html-markup/format
+          text-dash   ; Few will realize it but report will show dash  if imbalance was checked for 
+          ))))
+		  
+	  (while (< count numtransact )
+		(begin 	
+		(let* (	
+			(current-account (list-ref accounts-imbalance count ))			
+			)		
+		 (set! imbalance-val (string-append 
+			  text-note-account 
+			(gnc-account-get-full-name current-account)
+			  text-changed-in-value
+			(gnc:monetary->string (gnc:make-gnc-monetary (xaccAccountGetCommodity current-account) 		
+				(gnc:account-get-balance-interval current-account start-date-tp end-date-tp #f)))
+		))
+		  (set! count (+ count 1))		  
 	  )
-	)
+		(gnc:html-document-add-object!
+		doc
+		(gnc:make-html-text 
+		(gnc:html-markup-p
+         (gnc:html-markup/format
+          (_ "  %s") 
+          (gnc:html-markup-b imbalance-val)))		  
+		))	    
+	  ))   
+	)))  
+	;; end of section for imbalances
+ ))
     
     (gnc:report-finished)
     
@@ -956,8 +1035,8 @@
     )
   )
 
-(define is-reportname (N_ "Income & Expense Statement"))
-(define pnl-reportname (N_ "Profit & Loss Statement"))
+(define is-reportname (N_ "Income Statement"))
+(define pnl-reportname (N_ "Profit & Loss"))
 
 (define (income-statement-options-generator)
   (income-statement-options-generator-internal is-reportname))
@@ -971,11 +1050,11 @@
 
 
 (gnc:define-report 
- 'version 1
+ 'version 2
  'name is-reportname
  'report-guid "0bdbd3bdfd504aff849ecce86dbd24bd"
-;; 'menu-path (list gnc:menuname-income-expense)
- 'menu-path (list gnc:menuname-other)
+ 'menu-path (list gnc:menuname-income-expense)
+;; 'menu-path (list gnc:menuname-other)
  'options-generator income-statement-options-generator
  'renderer income-statement-renderer
  )
@@ -983,11 +1062,11 @@
 ;; Also make a "Profit & Loss" report, even if it's the exact same one,
 ;; just relabeled.
 (gnc:define-report 
- 'version 1
+ 'version 2
  'name pnl-reportname
  'report-guid "975dbd23984c40dea5527f5f0ca2779f"
-;; 'menu-path (list gnc:menuname-income-expense)
- 'menu-path (list gnc:menuname-other)
+ 'menu-path (list gnc:menuname-income-expense)
+;; 'menu-path (list gnc:menuname-other)
  'options-generator profit-and-loss-options-generator
  'renderer profit-and-loss-renderer
  )

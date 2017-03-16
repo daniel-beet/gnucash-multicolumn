@@ -430,7 +430,7 @@
     options))
 	
 ;; for imbalance
-(define (gnc:accounts-imbalance start-date-tp end-date-tp)
+(define (gnc:accounts-imbalance-or-orphan start-date-tp end-date-tp)
 ;; returns list of accounts starting with the letters "imbalanc"  which do not have a zero (0)
 ;; change in the balance between the start date and the end date
 	(let* (
@@ -438,8 +438,9 @@
 							(gnc-get-current-root-account)))
 		)
 		(filter (lambda (acct)
-			(if (string-prefix-ci? "imbalanc" (gnc-account-get-full-name acct))
-				;; check if the change in balance from the 'from' date to the 'to' date.
+			(if  (or (string-prefix-ci? "imbalance" (gnc-account-get-full-name acct))
+					(string-prefix-ci? "orphan" (gnc-account-get-full-name acct)))
+			;; check if the change in balance from the 'from' date to the 'to' date.
 				;; is 0
 				(if (equal? (gnc-numeric-zero) (gnc:account-get-balance-interval acct start-date-tp end-date-tp #f))
 					#f
@@ -991,7 +992,7 @@
 	  (let* (	   
 	   (count 0)
 	   (imbalance-val "")
-	   (accounts-imbalance (gnc:accounts-imbalance start-date-tp end-date-tp))
+	   (accounts-imbalance (gnc:accounts-imbalance-or-orphan start-date-tp end-date-tp))
 	    (numtransact (length accounts-imbalance ))
 	   )
 	   (gnc:html-document-add-object!

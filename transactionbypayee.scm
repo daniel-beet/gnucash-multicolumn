@@ -95,8 +95,10 @@
 
 ;; added for consolidating
 (define consolidated-text "Consolidated")
-(define consolidate-trans-text (N_ "Consolidate Transactions"))
-(define consolidate-case-sensitive-text  (N_ "--  make consolidation case-sensitive"))
+(define optname-consolidate-trans (N_ "Consolidate Transactions"))
+(define optname-consolidate-case-sensitive  (N_ "--  make consolidation case-sensitive"))
+
+(define optname-accounts-as-cols "account names as columns")
 
 (define descript-titlecase-text (N_ "--   Titlecase the first chracter in each word in description"))
 ; other option is titlecase - delete this comment
@@ -244,6 +246,11 @@
 (define scale-op-val '*)
 (define scale-num-val 1)
 (define scale-num-numeric (gnc:make-gnc-numeric 1 1))
+
+;for account names across page as column headings
+(define accounts-for-cols-hash (make-hash-table) )
+(define accounts-col-list '((a 1) (b 2)))
+(define account-col-start 0)
 
 (define description-titlecase? #t)
 
@@ -529,7 +536,40 @@
 ))
 ;; end for imbalance
 
+;; for account names as column headings
+(define (accounts-for-cols-make-hash splits)
+ (let ((split (car splits))
+	  (rest (cdr splits))
+	  )
+	(hash-set! accounts-for-cols-hash (xaccSplitGetAccount split) (xaccSplitGetAccount split))
+	(if (> (length rest) 0)
+		(accounts-for-cols-make-hash rest)
+		)
+))
+(define (sortaccounts  account-hash var-p comp-p1)(hash-map->list cons account-hash) )
+
+(define (sortaccountsq  account-hash var-p comp-p1)(sort (hash-map->list cons account-hash) 
+			;sort by primary key 
+			;(var-p xaccAccountGetName )
+			;(comp-p1 string-ci<=? )
+		 
+    (lambda (x y)	
+			(let ( ; (primary-x  (var-p x))
+				(primary-x (xaccAccountGetName x))
+				;(primary-y  (var-p y))
+					(primary-y (xaccAccountGetName y))
 			
+				)
+				;(comp-p1 primary-x primary-y )
+				(string-ci<=? primary-x primary-y )
+				)
+	)
+))
+
+
+;; end of account names as column headings
+
+;; for consolidating			
 (define (sortpayees payee-hash var-p var-s comp-p1 comp-p2 comp-s1 comp-s2)(sort (hash-map->list cons payee-hash) 
 			;1 sort by primary key and secondary key
 			;2 sort by primary key and amount
@@ -1180,6 +1220,12 @@
         (addto! heading-list (_ "Credit")))
     (if (used-running-balance column-vector)
         (addto! heading-list (_ "Balance")))
+	(if (equal? 1 1)
+		(begin
+		(set! account-col-start (+ 1 (length heading-list)))
+		(for-each (lambda (account-list)
+		(addto! heading-list (_ (xaccAccountGetName (car account-list)))))
+		accounts-col-list)))
     (reverse heading-list)))
 
 (define (add-split-row table split column-vector options
@@ -1335,6 +1381,15 @@
 						((vector-ref (cdr (assq scale-op-val  scale-num)) 0)
 							(xaccSplitGetBalance split) scale-num-numeric currency-frac GNC-RND-ROUND)) 
 				(hash-ref amount-total-hash report-currency (gnc-numeric-zero))  ))))))
+	(if (equal? 1 1)
+	  (for-each (lambda (acct-split)
+		(begin
+		(addto! row-contents
+		(if (equal? (xaccSplitGetAccount split) (car acct-split))
+			(gnc:make-html-table-cell/markup "number-cell"
+              (gnc:html-transaction-anchor parent split-value))
+		" "))))
+		accounts-col-list))
 
 					
 	(gnc:html-table-append-row/markup! table row-style
@@ -1425,7 +1480,7 @@
                      "number-cell" (gnc:comp-html-transaction-anchor split-trans split-value)))
             (addto! row-contents " ")))
 			
-	 (if (used-running-balance column-vector)
+	(if (used-running-balance column-vector)
 	(begin
 	  (gnc:debug "split is " split-trans)
 	  (hash-set! amount-total-hash report-currency  (gnc-numeric-add 
@@ -1435,7 +1490,16 @@
 		  (gnc:make-html-table-cell/markup
 		   "number-cell"
 			(gnc:make-gnc-monetary report-currency
-				(hash-ref amount-total-hash report-currency (gnc-numeric-zero))  ))))) 
+				(hash-ref amount-total-hash report-currency (gnc-numeric-zero))  )))))
+	(if (equal? 1 1)
+	  (for-each (lambda (acct-split)
+		(begin
+		(addto! row-contents
+		(if (equal? (get-accountguid split-trans) (gncAccountGetGUID (car acct-split)))
+			(gnc:make-html-table-cell/markup "number-cell"
+              (gnc:comp-html-transaction-anchor split-trans split-value))
+		" "))))
+		accounts-col-list))
     
 	(gnc:html-table-append-row/markup! table row-style
                                        (reverse row-contents))
@@ -1969,10 +2033,10 @@
       pagename-sorting optname-find2-text
       "k6" (N_ "text to look for  ") (N_ "")))
 	  
- )
-	  	  
+;end of section for find	
 	  
-;end of section for find	 
+ )
+	  	   
   
   ;; Display options
   
@@ -1984,10 +2048,11 @@
    ;; One list per option here with: option-name, sort-tag,
    ;; help-string, default-value
    (list
-    (list consolidate-trans-text		     "a"  (N_ "Combine transactions which have the same payee or description") #f)
-    (list consolidate-case-sensitive-text    "a1"  (N_ "when not checked \"A\" and \"a\" are considered to be the same letter in comparing descriptions") #f)
-   (list (N_ "Date")                         "a2"  (N_ "Display the date?") #t)
-    (list (N_ "Reconciled Date")              "a3" (N_ "Display the reconciled date?") #f)
+    (list optname-consolidate-trans		      "a"  (N_ "Combine transactions which have the same payee or description") #f)
+    (list optname-consolidate-case-sensitive  "a1"  (N_ "when not checked \"A\" and \"a\" are considered to be the same letter in comparing descriptions") #f)
+	(list optname-accounts-as-cols  		  "a2"  (N_ "create a column for each account (typically income or expense)") #f)
+    (list (N_ "Date")                         "a3"  (N_ "Display the date?") #t)
+    (list (N_ "Reconciled Date")              "a4" (N_ "Display the reconciled date?") #f)
     (if (qof-book-use-split-action-for-num-field (gnc-get-current-book))
         (list (N_ "Num/Action")               "b"  (N_ "Display the check number?") #t)
         (list (N_ "Num")                      "b"  (N_ "Display the check number?") #t))
@@ -3333,8 +3398,8 @@ Credit Card, and Income accounts.")))))
 ;for consolidate
 		(primary-comp-key  (cdr (assq primary-key  sort-key-number  )))
 		(secondary-comp-key  (cdr (assq secondary-key  sort-key-number  )))
-		(consolidate? (opt-val gnc:pagename-display consolidate-trans-text))
-		(consolidate-case-sensitive? (opt-val gnc:pagename-display consolidate-case-sensitive-text))
+		(consolidate? (opt-val gnc:pagename-display optname-consolidate-trans))
+		(consolidate-case-sensitive? (opt-val gnc:pagename-display optname-consolidate-case-sensitive))
 		
 	
 	(void-status (opt-val gnc:pagename-accounts optname-void-transactions))
@@ -3478,14 +3543,36 @@ Credit Card, and Income accounts.")))))
 		(account-types-to-reverse	(get-account-types-to-reverse options)))
 		(set! splits (filtersplits-found splits account-types-to-reverse consolidate? ))))
 	))
-		
+;;
+;;for showing accounts as column headings
+	(if (and (equal? 1 1) (not (null? splits)))
+	   (begin
+;; 1. get list (put in hash table) of all accounts (typically income or expense categories)
+	(set! accounts-for-cols-hash (make-hash-table) )
+	(accounts-for-cols-make-hash splits)
+	
+;; 2. sort list (convert hash table to alist and sort) based on users input
+	(let* (
+		(var-p xaccAccountGetName )
+		(comp-p1 string-ci<=? )
+	
+	     )
+		 (set! accounts-col-list (sortaccounts  accounts-for-cols-hash var-p comp-p1))
+	)
+))
+;; 3. on same  row in the table as headings, go across cells/columns and put account names in order.
+;; 4. may want option to put account code under or above each name 
+;; 5. print the monetary amount in the correct account (category)  column
+;; 5.  At bottom of transactions print total for each column
+;; 6. repeat steps 3- 5 for consolidated report section
+
 ;;
 
 ;;   for composite transaction corr
 
 	(if  (not (null? splits)) 
 		(begin 
-		(if (or consolidate? #f) ;change #f to #t for troubleshooting -also may want to find equal? 1 "a" and change 
+		(if (or consolidate? #t) ;change #f to #t for troubleshooting -also may want to find equal? 1 "a" and change 
 		(begin	
 	
 		(set! payee-hash (make-hash-table) )
@@ -3613,7 +3700,7 @@ Credit Card, and Income accounts.")))))
   ;;optional section for troubeshooting gnctimeperiod-utilities
 	;; change to (equal? 1 1) to see variables, also change #f to #t on (or consolidate? around line 3400
 	;;       use (equal? 1 "a") to hide variables
-	(if (equal? 1 "a") ;; report will fail unless change or consolidate? (see two lines above)
+	(if (equal? 1 1) ;; report will fail unless change or consolidate? (see two lines above)
 	(begin
 		(set! period-val " ")
 	  (let* (	   
@@ -3671,6 +3758,13 @@ Credit Card, and Income accounts.")))))
 			(number->string count) 
 			"value:"
 			(number->string split-value-num)
+			"hg"
+			(number->string (length accounts-col-list))
+			"yt"
+			(number->string (hash-fold (lambda (key value prior)
+						(if (not (string? value)) (1+ prior) prior))
+						0 accounts-for-cols-hash))
+		;	(xaccAccountGetName (car (list-ref accounts-for-cols-hash 1 )))
 			"guid:"
 			accountguid
 			"date:"

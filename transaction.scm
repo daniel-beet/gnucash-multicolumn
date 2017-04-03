@@ -833,14 +833,11 @@
 			; (gnc-account-get-full-name (car account-list))   full account name
 			; (xaccAccountGetName (car account-list))     account name
 			;(addto! heading-list (_ (xaccAccountGetName (car account-list)))))
-		(addto! heading-list (N_ (string-append "<b>" (gnc-account-get-full-name  (car account-list)) "</b>"))))
+		(addto! heading-list (gnc:make-html-text (gnc:html-markup-b (gnc-account-get-full-name  (car account-list))))))
 		accounts-col-list)
 	(gnc:html-table-append-row! table 
-                                       (reverse heading-list))
-
-	;(gnc:html-table-append-row/markup! table row-style
-    ;                                   (reverse heading-list))
-	))
+              (reverse heading-list))
+		))
 		  
 ;; end of account names as column headings
 
@@ -4311,7 +4308,7 @@ Credit Card, and Income accounts.")))))
           (gnc:html-markup-b imbalance-val)))		  
 		))	    
 	  ))   
-	)))
+	))))
 ;end for showing imbalance	
 				
 				
@@ -4326,14 +4323,27 @@ Credit Card, and Income accounts.")))))
                   (_ "No transactions were found that \
 match the time interval and account selection specified \
 in the Options panel.")))
-                (gnc:html-document-add-object! document p))))
+                (gnc:html-document-add-object! document p)))
 
-        ;; error condition: no accounts specified
-        
+        ;; error condition: no accounts specified or no transactions found
+ (if (not (or (null? c_account_1) (and-map not c_account_1)))
+	;; error condition: no splits found
+              (let ((p (gnc:make-html-text)))
+                (gnc:html-text-append! 
+                 p 
+                 (gnc:html-markup-h2 
+                  (_ "No matching transactions found"))
+                 (gnc:html-markup-p
+                  (_ "No transactions were found that \
+match the time interval, account selection specified, \
+and find requirements \
+in the Options panel.")))
+                (gnc:html-document-add-object! document p))
+	;; error condition: no accounts specified
         (gnc:html-document-add-object!
          document 
 	 (gnc:html-make-no-account-warning 
-	  report-title (gnc:report-id report-obj))))
+	  report-title (gnc:report-id report-obj)))))
 
     (gnc:report-finished)
     document))

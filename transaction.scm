@@ -98,11 +98,11 @@
 (define optname-consolidate-trans (N_ "Consolidate Transactions"))
 (define optname-consolidate-case-sensitive  (N_ "--  make consolidation case-sensitive"))
 
+;; added for multi-column
 (define optname-accounts-as-cols-unique-trans "-- Only show transaction once")
+(define optname-multi-col-sort "Sort columns in multi-column by")
 
 (define optname-descript-titlecase (N_ "Titlecase the first chracter in each word in description"))
-
-(define optname-account-as-cols? #f ) 
 
 ;; add for scaling
 (define scaling-text "Note: amount and balance")
@@ -235,6 +235,22 @@
 		(cons '/  (vector gnc-numeric-div (N_ "divided by ")))
 		))
 		
+(define list-multi-col-choices
+   (list (list->vector
+			(list 'account-name
+                   (N_ "account name")
+                   (N_ "sort by and display account name ")))
+            (list->vector
+             (list 'full-account-name
+                   (N_ "Full account name")
+                   (N_ "sort by and display full account name ")))
+            (list->vector
+             (list 'account-code
+                   (N_ "account code")
+                   (N_ "sort by account code and display account code and full account name")))
+             )
+)
+		
 (define do-find? #f)
 (define find-min? #f)
 (define find-max? #f)
@@ -269,6 +285,8 @@
 (define currency-col-type-hash (make-hash-table) )
 (define currency-col-type-num 1)
 (define currency-col-type (number->string currency-col-type-num))
+(define optname-account-as-cols? #f )
+(define multi-col-order 'account-name)
 
 
 (define description-titlecase? #t)
@@ -556,7 +574,22 @@
 ))
 ;; end for imbalance
 
-;; for account names as column headings
+;; for account names as column headings 
+(define multi-col-sort-list
+    ;; List for sorting account names as columns ie. multi-column. Each entry: (cons
+    ;; 'type-of-sort (vector get-variables compare-variable compare-variables-in-reverse-order-not-implemented)
+	;;   
+	
+	 	; (xaccAccountGetCode (car account-list))      account code
+			; (gnc-account-get-full-name (car account-list))   full account name
+			; (xaccAccountGetName (car account-list))     account name
+	
+    (list
+	;;      sort by                how to get variable      		ascend     	   descend  
+    (cons 'account-name 		(vector xaccAccountGetName   		string-ci<?	 string-ci>? ))									 
+    (cons 'full-account-name    (vector gnc-account-get-full-name	string-ci<?	 string-ci>? ))
+    (cons 'account-code  		(vector xaccAccountGetCode  		string-ci<?	 string-ci>? ))
+))
 (define (accounts-for-cols-make-hash splits)
  (let* ((split (car splits))
 		(rest (cdr splits))
@@ -603,7 +636,8 @@
 		(accounts-for-cols-make-hash rest)
 		)
 ))
-;; for account names as column headings
+
+;; for account names as column headings continued
 ;; called for split transactions, creates hash with account name and sum of all the
 ;;  splits in the single transaction going into that account 
 (define (accounts-for-cols-multisplit accounts-for-cols-bal-hash split account-types-to-reverse)
@@ -721,7 +755,7 @@
 ))
 
 (define (add-total-row-acct-cols table width subtotal-string subtotal-collector
-                          subtotal-style export?)  ; dbd
+                          subtotal-style export?)
 
   (let ((currency-totals (subtotal-collector
                           'format gnc:make-gnc-monetary #f))
@@ -785,7 +819,25 @@
 	(filter only-one-copy? splits)
 	))
 		
-;	dbd
+;	add account names as column headings
+(define (make-multi-col-heading-list table row-style)
+  (let ((heading-list '())
+		(count 1))
+		(while (< count account-col-start)
+            (addto! heading-list  (gnc:html-make-empty-cell))         
+		(set! count (+ count 1)))
+		
+		(for-each (lambda (account-list)
+		 ;; change how multi-column headings print by changing following line.  Possibilities are:
+		 	; (xaccAccountGetCode (car account-list))      account code
+			; (gnc-account-get-full-name (car account-list))   full account name
+			; (xaccAccountGetName (car account-list))     account name
+			;(addto! heading-list (_ (xaccAccountGetName (car account-list)))))
+		(addto! heading-list (_ (gnc-account-get-full-name  (car account-list)))))
+		accounts-col-list) 					
+	(gnc:html-table-append-row/markup! table row-style
+                                       (reverse heading-list))
+	))
 		  
 ;; end of account names as column headings
 
@@ -1384,8 +1436,7 @@
 				 )
 	
 	(let ((running-bal?
-			(if (and optname-account-as-cols?
-				(not consolidate?))
+			(if optname-account-as-cols?
 					#f
 			(opt-val (N_ "Display") (N_ "Running Balance")))))
     (if running-bal?
@@ -1450,7 +1501,7 @@
         (addto! heading-list (_ "Credit")))
     (if (used-running-balance column-vector)
         (addto! heading-list (_ "Balance")))
-	(if (and optname-account-as-cols? (not consolidate?))
+	(if optname-account-as-cols?
 		(begin
 		(set! account-col-start (+ 1 (length heading-list)))
 		(for-each (lambda (account-list)
@@ -1458,8 +1509,8 @@
 		 	; (xaccAccountGetCode (car account-list))      account code
 			; (gnc-account-get-full-name (car account-list))   full account name
 			; (xaccAccountGetName (car account-list))     account name
-		;(addto! heading-list (_ (xaccAccountGetName (car account-list)))))
-		(addto! heading-list (_ (gnc-account-get-full-name (car account-list)))))
+			;(addto! heading-list (_ (xaccAccountGetName (car account-list)))))
+		(addto! heading-list (_ ((vector-ref (cdr (assq multi-col-order multi-col-sort-list)) 0) (car account-list)))))
 		accounts-col-list))) 
     (reverse heading-list)))
 
@@ -1627,7 +1678,12 @@
 				(gnc:make-html-table-cell/markup "number-cell"
 					(gnc:html-transaction-anchor parent 
 					(gnc:make-gnc-monetary report-currency split-value)))
-				" "))))
+				;(if export?
+					(gnc:html-make-empty-cell)
+					;" ")
+             
+				;" "
+				))))
 			accounts-col-list
 		)
 	 	(let* ((txn (xaccSplitGetParent split))
@@ -1642,10 +1698,14 @@
 		(addto! row-contents
 			(let ((the_amount (hash-ref accounts-for-cols-bal-hash (car acct-split) #f ))) ;;(gnc-numeric-zero))))
 				(if  the_amount
-			(gnc:make-html-table-cell/markup "number-cell"
-              (gnc:html-transaction-anchor parent 
-			  the_amount))
-		" ")))))
+					(gnc:make-html-table-cell/markup "number-cell"
+					(gnc:html-transaction-anchor parent 
+					the_amount))
+				;(if export? - vaiable unavail at this location since created with let
+					(gnc:html-make-empty-cell)
+				;	" ")
+			  
+		)))))
 		accounts-col-list))
 		))
 
@@ -2174,8 +2234,16 @@
       "i" (N_ "Order of Secondary sorting.")
       'ascend
 	  ascending-choice-list))
+	  
+;;for multi-column 
+    (gnc:register-trep-option
+     (gnc:make-multichoice-option
+      pagename-sorting (N_ optname-multi-col-sort)
+      "i1" (N_ "Sort Order for account column headings.")
+      'full-account-name
+	  list-multi-col-choices))
 	
-;for find
+;;for find
  (gnc:register-trep-option
      (gnc:make-simple-boolean-option
       pagename-sorting (N_ optname-find-min)
@@ -2361,7 +2429,7 @@
    (gnc:make-multichoice-option
     gnc:pagename-display (N_ "Sign Reverses")
     "p" (N_ "Reverse amount display for certain account types.")
-    'credit-accounts
+    'none
     (list 
      (vector 'none (N_ "None") (N_ "Don't change any displayed amounts."))
      (vector 'income-expense (N_ "Income and Expense")
@@ -2453,40 +2521,40 @@ Credit Card, and Income accounts.")))))
 				)
 ;;;;;				
 		(define (found-text? which-field text-to-find ); based on entries in find-field-number
-		(if (equal? which-field 10 ) ; 'description
-			(string-contains (string-append " " (string-upcase (xaccTransGetDescription parent) ) " ")  text-to-find)
-		(if (equal? which-field  13 ) ; 'memo
-			(string-contains (string-append " " (string-upcase (xaccSplitGetMemo currentsplit) ) " ")  text-to-find)
-		(if (equal? which-field 14 ) ; 'notes
-			(string-contains (string-append " " (string-upcase (xaccTransGetNotes parent) ) " ")  text-to-find)
-		(if (equal? which-field 1 ) ; 'account-name
-			(string-contains (string-append " " (string-upcase (gnc-account-get-full-name account) ) " ")  text-to-find)
-		(if (equal? which-field  2) ;'accountcodee
-			(string-contains (string-append " " (string-upcase (xaccAccountGetCode account) ) " ")  text-to-find)
-		(if (equal? which-field  16 ) ; 'memo/notes
+		(case which-field
+		((10) ; 'description
+			(string-contains (string-append " " (string-upcase (xaccTransGetDescription parent) ) " ")  text-to-find))
+		((13) ; 'memo
+			(string-contains (string-append " " (string-upcase (xaccSplitGetMemo currentsplit) ) " ")  text-to-find))
+		((14) ; 'notes
+			(string-contains (string-append " " (string-upcase (xaccTransGetNotes parent) ) " ")  text-to-find))
+		(( 1) ; 'account-name
+			(string-contains (string-append " " (string-upcase (gnc-account-get-full-name account) ) " ")  text-to-find))
+		(( 2) ;'accountcodee
+			(string-contains (string-append " " (string-upcase (xaccAccountGetCode account) ) " ")  text-to-find))
+		((16 ) ; 'memo/notes
 			(or (string-contains (string-append " " (string-upcase (xaccSplitGetMemo currentsplit) ) " ")  text-to-find) ;memo
-			(string-contains (string-append " " (string-upcase (xaccTransGetNotes parent) ) " ")  text-to-find)) ;notes		
-		(if (equal? which-field 15 ) ; 'any
+			(string-contains (string-append " " (string-upcase (xaccTransGetNotes parent) ) " ")  text-to-find))) ;notes		
+		((15) ; 'any
 			(or (string-contains (string-append " " (string-upcase (xaccTransGetDescription parent) ) " ")  text-to-find) ;description
 			(string-contains (string-append " " (string-upcase (xaccSplitGetMemo currentsplit) ) " ")  text-to-find) ; memo
 			(string-contains (string-append " " (string-upcase (xaccTransGetNotes parent) ) " ")  text-to-find) ;notes
 			(string-contains (string-append " " (string-upcase (gnc-account-get-full-name account) ) " ")  text-to-find) ;account-name
-			(string-contains (string-append " " (string-upcase (xaccAccountGetCode account) ) " ")  text-to-find)) ; account-code
-		(if (equal? which-field 11 ) ; 'number
+			(string-contains (string-append " " (string-upcase (xaccAccountGetCode account) ) " ")  text-to-find))) ; account-code
+		((11) ; 'number
 			(or (string-contains (string-append " " (string-upcase (gnc-get-num-action parent currentsplit) ) " ")  text-to-find) ;num
 				(if (gnc-get-num-action parent #f)
 			(string-contains (string-append " " (string-upcase (gnc-get-num-action parent #f) ) " ")  text-to-find); Trans Number 
-			 #f))
-		(if (equal? which-field  3 ) ; 'date
-			(string-contains (string-append " " (string-upcase (gnc-print-date (gnc-transaction-get-date-posted parent) )) " ")  text-to-find) ;date
-		(if (equal? which-field  5 ) ; 'reconciled-date
+			 #f)))
+		(( 3) ; 'date
+			(string-contains (string-append " " (string-upcase (gnc-print-date (gnc-transaction-get-date-posted parent) )) " ")  text-to-find)) ;date
+		(( 5) ; 'reconciled-date
 				 (let* ((date (gnc-split-get-date-reconciled currentsplit))
 						(printed-date (if (equal? date (cons 0 0))
 											""
 											(gnc-print-date date))))
-			(string-contains (string-append " " (string-upcase printed-date) " ")  text-to-find)) ;reconciled date
-			#t ; for none
-		)))))))))))
+			(string-contains (string-append " " (string-upcase printed-date) " ")  text-to-find))) ;reconciled date
+		))
 ;;;;;;		
 
 			
@@ -2728,6 +2796,10 @@ Credit Card, and Income accounts.")))))
     (gnc:html-table-set-col-headers!
      table
      (make-heading-list used-columns options))
+	 
+	 (if (and optname-account-as-cols? (eq? multi-col-order 'account-code))
+		(make-multi-col-heading-list table def:alternate-row-style))
+	 	 
     ;;     (gnc:warn "Splits:" splits)
     (if (not (null? splits))
         (begin
@@ -3657,6 +3729,7 @@ Credit Card, and Income accounts.")))))
         (primary-order (opt-val pagename-sorting "Primary Sort Order"))
         (secondary-key (opt-val pagename-sorting optname-sec-sortkey))
         (secondary-order (opt-val pagename-sorting "Secondary Sort Order"))
+
 ;for consolidate
 		(primary-comp-key  (cdr (assq primary-key  sort-key-number  )))
 		(secondary-comp-key  (cdr (assq secondary-key  sort-key-number  )))
@@ -3707,6 +3780,8 @@ Credit Card, and Income accounts.")))))
 											(eq? (opt-val (N_ "Display") (N_ "Amount")) 'multicol))
 			#t
 			#f))
+
+	(set! multi-col-order (opt-val pagename-sorting optname-multi-col-sort))
 
 
     ;;(gnc:warn "accts in trep-renderer:" c_account_1)
@@ -3828,16 +3903,9 @@ Credit Card, and Income accounts.")))))
 
 	
 ;; 2. sort list (convert hash table to alist and sort) based on users input
-	; (xaccAccountGetCode (car account))      account code
-	; (gnc-account-get-full-name (car account-alist))   full account name
-	; (xaccAccountGetName (car account))     account name
-
 	(let* (
-		(var-p xaccAccountGetName )
-	;	(var-p gnc-account-get-full-name )
-	;	(var-p xaccAccountGetCode )
-		(comp-p1 string-ci<=? )
-	
+		(var-p (vector-ref (cdr (assq multi-col-order multi-col-sort-list)) 0))
+		(comp-p1 (vector-ref (cdr (assq multi-col-order multi-col-sort-list)) 1))	
 	     )
 		 (set! accounts-col-list (sortaccounts  accounts-for-cols-hash var-p comp-p1))
 	)

@@ -57,6 +57,7 @@
 
 (define lastyr  "Last year")
 (define curryear "This year")
+(define next_yr (number->string (+ this_year 1)))
 (define curr_yr (number->string (- this_year 0)))
 (define prev_yr (number->string (- this_year 1)))
 (define 2yr_ago (number->string (- this_year 2)))
@@ -131,6 +132,10 @@
              (list 'this-yr
                    (N_ curryear)
                    (N_ "this year")))
+			(list->vector
+             (list 'yr_plus1
+                   (N_ next_yr)
+                   (N_ "next year")))
             (list->vector
              (list 'yr_0
                    (N_ curr_yr)
@@ -529,7 +534,8 @@
 		(case year-val
 		((last-yr) (set! year_end (- thisyear 1) )) 
 		((this-yr) (set! year_end (- thisyear 0)))
-		((yr_0) (set! year_end (- thisyear 0)))
+		((yr_plus1) (set! year_end (+ thisyear 1)))
+		((yr_0) 	(set! year_end (- thisyear 0)))
 		((yr_minus1) (set! year_end (- thisyear 1)))
 		((yr_minus2) (set! year_end (- thisyear 2)))
 		((yr_minus3) (set! year_end (- thisyear 3)))

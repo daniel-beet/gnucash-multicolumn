@@ -58,7 +58,7 @@
 
 ;; Define the strings here to avoid typos and make changes easier.
 
-(define reportname (N_ "Transaction by Payee Report"))
+(define reportname (N_ "Transaction Report"))
 (define pagename-sorting (N_ "Sorting"))
 (define optname-prime-sortkey (N_ "Primary Key"))
 (define optname-prime-subtotal (N_ "Primary Subtotal"))
@@ -98,9 +98,10 @@
 (define optname-consolidate-trans (N_ "Consolidate Transactions"))
 (define optname-consolidate-case-sensitive  (N_ "--  make consolidation case-sensitive"))
 
-(define optname-accounts-as-cols "account names as columns")
+(define optname-accounts-as-cols "multi-column")
+(define optname-accounts-as-cols-unique-trans "-- Only show transaction once")
 
-(define optname-descript-titlecase (N_ "--   Titlecase the first chracter in each word in description"))
+(define optname-descript-titlecase (N_ "Titlecase the first chracter in each word in description"))
 
 (define optname-account-as-cols? #f ) 
 
@@ -252,6 +253,12 @@
 (define accounts-col-list '((a 1) (b 2)))
 (define account-col-start 0)
 (define accounts-for-cols-bal-hash (make-hash-table) )
+(define accounts-cols-totals-hash (make-hash-table))
+(define currency-col-lookup-hash (make-hash-table))
+(define currency-col-type-hash (make-hash-table) )
+(define currency-col-type-num 1)
+(define currency-col-type (number->string currency-col-type-num))
+
 
 (define description-titlecase? #t)
 
@@ -562,9 +569,8 @@
          (let ((splits (xaccTransGetSplitList txn)))
 
                 ;; Walk through the list of splits.
-                ;; if we reach the end, return #f
-                ;; if the 'this' != 'split' and the split->account is a member
-                ;; of the account-list, then return #t, else recurse
+                ;; if the 'this' != 'split' 
+                ;; add acount name to list of accounts to use as column names
                 (define (is-member splits)
                   (if (not (null? splits))
                       (let* ((this (car splits))
@@ -586,7 +592,6 @@
 		(accounts-for-cols-make-hash rest)
 		)
 ))
-;;dbd 
 ;; for account names as column headings
 ;; called for split transactions, creates hash with account name and sum of all the
 ;;  splits in the single transaction going into that account 
@@ -597,68 +602,98 @@
 	  )
 	  	  
         ;; A multi-split transaction - run over all splits      
-                ;; Walk through the list of splits.
-                (define (get-s-split splits)
-                  (if (not (null? splits))
-                      (let* ((this (car splits))
-                            (rest (cdr splits))
-							(s-parent (xaccSplitGetParent this))
-                            (s-account (xaccSplitGetAccount this))
-							(s-account-type (xaccAccountGetType s-account))
-							(s-amount (xaccSplitGetAmount this))
-							(s-value (xaccSplitGetValue this))
-							(s-commodity (xaccAccountGetCommodity s-account))
-							(trans-guid (gncTransGetGUID s-parent ))
-							(currency (if (not (null? s-account))
-								(xaccAccountGetCommodity s-account)
-								(gnc-default-currency)))  
-							(report-currency (if comm-curr?
-									curr
-									currency))
-							(damount (if (gnc:split-voided? this)
-								(xaccSplitVoidFormerAmount this)
-								(xaccSplitGetAmount this)))
-							(trans-date (gnc-transaction-get-date-posted s-parent))
-							(currency-frac (gnc-commodity-get-fraction report-currency))
-							(mon-amount (gnc:exchange-by-pricedb-nearest
-								(gnc:make-gnc-monetary 
-								currency
-								(if (member s-account-type account-types-to-reverse) 
-									(gnc-numeric-neg damount)
-									damount))
-									report-currency
-									;; Use midday as the transaction time so it matches a price
-									;; on the same day.  Otherwise it uses midnight which will
-									;; likely match a price on the previous day
-									(timespecCanonicalDayTime trans-date)))			   
-							(mon-scaled  (gnc:make-gnc-monetary currency ((vector-ref (cdr (assq scale-op-val  scale-num)) 0)
-								(gnc:gnc-monetary-amount mon-amount) scale-num-numeric currency-frac GNC-RND-ROUND)))
-							(split-value (if (= 1 scale-num-val)
-											mon-amount
-											mon-scaled))
+        ;; Walk through the list of splits.
+        (define (get-s-split splits)
+            (if (not (null? splits))
+                (let* ((this (car splits))
+                    (rest (cdr splits))
+					(s-parent (xaccSplitGetParent this))
+                    (s-account (xaccSplitGetAccount this))
+					(s-account-type (xaccAccountGetType s-account))
+					(s-amount (xaccSplitGetAmount this))
+					(s-value (xaccSplitGetValue this))
+					(s-commodity (xaccAccountGetCommodity s-account))
+					(trans-guid (gncTransGetGUID s-parent ))
+					(currency (if (not (null? s-account))
+						(xaccAccountGetCommodity s-account)
+						(gnc-default-currency)))  
+					(report-currency (if comm-curr?
+							curr
+							currency))
+					(damount (if (gnc:split-voided? this)
+						(xaccSplitVoidFormerAmount this)
+						(xaccSplitGetAmount this)))
+					(trans-date (gnc-transaction-get-date-posted s-parent))
+					(currency-frac (gnc-commodity-get-fraction report-currency))
+					(mon-amount (gnc:exchange-by-pricedb-nearest
+						(gnc:make-gnc-monetary 
+						currency
+						(if (member s-account-type account-types-to-reverse) 
+							(gnc-numeric-neg damount)
+							damount))
+						report-currency
+						;; Use midday as the transaction time so it matches a price
+						;; on the same day.  Otherwise it uses midnight which will
+						;; likely match a price on the previous day
+						(timespecCanonicalDayTime trans-date)))			   
+					(mon-scaled  (gnc:make-gnc-monetary currency ((vector-ref (cdr (assq scale-op-val  scale-num)) 0)
+						(gnc:gnc-monetary-amount mon-amount) scale-num-numeric currency-frac GNC-RND-ROUND)))
+					(split-value (if (= 1 scale-num-val)
+								mon-amount
+								mon-scaled))
 				;			(split-value-coll 			; need "correct" sign for summations
 				;				(if (member account-type account-types-to-reverse) 
 				;					(gnc:make-gnc-monetary currency (gnc-numeric-neg (gnc:gnc-monetary-amount split-value)))
 				;					split-value))						
 						)
-			;; may want to print message in cell if mixed currencies in the split transaction
-			;;       for same account category such as expenses:auto			
-                        (if (not (eq? this split))
-									(hash-set! accounts-for-cols-bal-hash s-account
-									(gnc:make-gnc-monetary report-currency
-									(gnc-numeric-add 
-									(gnc:gnc-monetary-amount
-										split-value)
-									(gnc:gnc-monetary-amount
-									(hash-ref accounts-for-cols-bal-hash s-account
-										(gnc:make-gnc-monetary report-currency (gnc-numeric-zero))))
+				;; may want to print message in cell if mixed currencies in the split transaction
+				;;       for same account category such as expenses:auto			
+                (if (not (eq? this split))
+					(begin
+						(hash-set! accounts-for-cols-bal-hash s-account
+							(gnc:make-gnc-monetary report-currency
+							(gnc-numeric-add 
+							(gnc:gnc-monetary-amount
+								split-value)
+							(gnc:gnc-monetary-amount
+							(hash-ref accounts-for-cols-bal-hash s-account
+								(gnc:make-gnc-monetary report-currency (gnc-numeric-zero))))
 									 GNC-DENOM-AUTO GNC-RND-ROUND)
 									))
-                        )
+					; now to add to the sum for each column but first need to handle case where multiple currencies
+					; look up the number assigned for this type of currency, if not in list, will return currency-col-type
+					; this part of code is not incrementing for each currency like it should but
+					; seems each account can only have one currency so I modified reporting section to not incremnet either
+					;  (took out while loop in reporting)
+					(let (
+						(hashed-currency (hash-ref currency-col-type-hash report-currency currency-col-type))
+						(acctfull (gnc-account-get-full-name s-account))						
+						)
+						(if (equal? currency-col-type hashed-currency); if it returned current-col-type it wasn't found
+																	;	- add to hash and prepare new number
+						(begin
+							(hash-set! currency-col-type-hash report-currency currency-col-type )
+							(set! currency-col-type-num (+ 1 currency-col-type-num))
+							(set! currency-col-type (number->string currency-type-num))
+						))
+						;; add to total for the account column
+						(hash-set! accounts-cols-totals-hash (string-append acctfull "#Vv;" hashed-currency)
+							(gnc:make-gnc-monetary report-currency
+							(gnc-numeric-add 
+							(gnc:gnc-monetary-amount
+								split-value)
+							(gnc:gnc-monetary-amount
+							(hash-ref accounts-cols-totals-hash (string-append acctfull "#Vv;" hashed-currency)
+								(gnc:make-gnc-monetary report-currency (gnc-numeric-zero))))
+									 GNC-DENOM-AUTO GNC-RND-ROUND)
+									))
+					)
+					)
+                )
     
-                            (get-s-split rest))))
+                (get-s-split rest))))
 
-                (get-s-split splits)								
+            (get-s-split splits)								
 ))
 
 
@@ -682,7 +717,73 @@
 	)
 ))
 
+(define (add-total-row-acct-cols table width subtotal-string subtotal-collector
+                          subtotal-style export?)  ; dbd
 
+  (let ((currency-totals (subtotal-collector
+                          'format gnc:make-gnc-monetary #f))
+        (blanks (gnc:make-html-table-cell/size 1 (- width 1) #f))
+		(count 1)
+		(count-spaces 1)
+		)
+  
+		(let* (
+			(currency-col-type (number->string count))
+			(row-contents '())
+			)
+	
+			(addto! row-contents			
+					(gnc:make-html-table-cell/markup "total-label-cell" subtotal-string))
+		; I can't figure out how to get blanks like the (define add-subtotal-row does so brute force
+			(while (< count-spaces width )	
+				(addto! row-contents
+					(gnc:make-html-table-cell/markup
+						"total-number-cell"
+					" " ))
+			(set! count-spaces (+ 1 count-spaces))
+			)
+	
+		(for-each (lambda (account-alist)
+					(let* (
+	                 (acctfull (gnc-account-get-full-name (car account-alist)))
+					 ; originaly planned to increment through currency-col-type-hash and print each currency on different line
+					 ; however appears each account can only have one currency
+					 (col-total (hash-ref accounts-cols-totals-hash (string-append acctfull "#Vv;" currency-col-type) #f))
+					)
+					(addto! row-contents
+					(gnc:make-html-table-cell/markup
+						"total-number-cell"
+					(if col-total ;print col-total if true
+					col-total
+					" " )))
+					))
+					accounts-col-list)
+			(gnc:html-table-append-row/markup! table subtotal-style				
+				(reverse row-contents))
+					)					
+			  ))
+			  
+(define (filter-acct-cols-trans splits)
+	(let (
+	(have-trans-hash (make-hash-table) ))
+	
+  (define (only-one-copy? split)
+	(let* (
+		(parent (xaccSplitGetParent split))
+  		(trans-guid (gncTransGetGUID parent ))
+		)
+		(if (hash-ref have-trans-hash trans-guid #f)
+		#f  ; already have a copy of this transaction
+		(begin
+			(hash-set! have-trans-hash trans-guid #t)
+			#t)
+		))
+	)
+	(filter only-one-copy? splits)
+	))
+		
+;	dbd
+		  
 ;; end of account names as column headings
 
 ;; for consolidating			
@@ -2189,9 +2290,8 @@
    (list
     (list optname-consolidate-trans		      "a"  (N_ "Combine transactions which have the same payee or description") #f)
     (list optname-consolidate-case-sensitive  "a1"  (N_ "when not checked \"A\" and \"a\" are considered to be the same letter in comparing descriptions") #f)
-	(list optname-accounts-as-cols  		  "a2"  (N_ "create a column for each account (typically income or expense) SETTING NOT USED BY CONSOLIDATE") #f)
-    (list (N_ "Date")                         "a3"  (N_ "Display the date?") #t)
-    (list (N_ "Reconciled Date")              "a4" (N_ "Display the reconciled date?") #f)
+    (list (N_ "Date")                         "a2"  (N_ "Display the date?") #t)
+    (list (N_ "Reconciled Date")              "a3" (N_ "Display the reconciled date?") #f)
     (if (qof-book-use-split-action-for-num-field (gnc-get-current-book))
         (list (N_ "Num/Action")               "b"  (N_ "Display the check number?") #t)
         (list (N_ "Num")                      "b"  (N_ "Display the check number?") #t))
@@ -2214,7 +2314,10 @@
     ;; note the "sign reverse" multichoice option in between here
     (list (N_ "Use old running balance")      "q"  (N_ "Use old method of computing running balance , may need for different currencies") #f)
     (list optname-show-imbalance              "r"  opthelp-show-imbalance #t)
-	))
+	; optname-descript-titlecase is being shown here instead of line d1
+	(list optname-accounts-as-cols  		  "t1"  (N_ "create a column for each account (typically income or expense) SETTING NOT USED BY CONSOLIDATE") #f)
+	(list optname-accounts-as-cols-unique-trans "t2"  (N_ "only show a transaction once in the entire report for multi-column") #f)
+  	))
 
   (if (qof-book-use-split-action-for-num-field (gnc-get-current-book))
       (gnc:register-trep-option
@@ -2493,6 +2596,12 @@ Credit Card, and Income accounts.")))))
            (list
             (gnc:make-html-table-cell/size
              1 width (gnc:make-html-text (gnc:html-markup-hr)))))
+			 
+	  (if optname-account-as-cols?  ;;splits is now null (empty) time to print out total
+	  (add-total-row-acct-cols table width  
+                    (_ "  Total")
+                    total-collector def:grand-total-style export?));; print totals for the account columns
+	
 	  (if (gnc:option-value (gnc:lookup-option options "Display" "Totals"))
 	      (render-grand-total table width total-collector export?)))
 	
@@ -3552,7 +3661,7 @@ Credit Card, and Income accounts.")))))
 	(set! description-titlecase? (opt-val gnc:pagename-display optname-descript-titlecase))
 	
 	(set! optname-account-as-cols? (opt-val gnc:pagename-display optname-accounts-as-cols))
-		
+	
 
  ;for find 
 	(set! find-text? (opt-val pagename-sorting optname-find-text?))
@@ -3688,9 +3797,18 @@ Credit Card, and Income accounts.")))))
 ;;for showing accounts as column headings
 	(if (and optname-account-as-cols? (not consolidate?) (not (null? splits)))
 	   (begin
+;; 0. if only want one copy of each transaction, filter list of splits
+	(if (opt-val gnc:pagename-display optname-accounts-as-cols-unique-trans)
+	(set! splits (filter-acct-cols-trans splits)))
 ;; 1. get list (put in hash table) of all "other" accounts (typically income or expense categories)
 	(set! accounts-for-cols-hash (make-hash-table) )
+	(set! accounts-cols-totals-hash (make-hash-table)) ; initialize table for summing each account column so can print total
+	(set! currency-col-lookup-hash (make-hash-table))
+	(set! currency-col-type-hash (make-hash-table))
+	(set! currency-col-type-num 1)
+	(set! currency-col-type (number->string currency-col-type-num))
 	(accounts-for-cols-make-hash splits)
+
 	
 ;; 2. sort list (convert hash table to alist and sort) based on users input
 	(let* (
@@ -3705,7 +3823,7 @@ Credit Card, and Income accounts.")))))
 ;; 4. may want option to put account code under or above each name 
 ;; 5. print the monetary amount in the correct account (category)  column
 ;; 5.  At bottom of transactions print total for each column
-;; 6. repeat steps 3- 5 for consolidated report section
+;; 6. repeat steps 3- 5 for consolidated report section - not implemented
 
 ;;
 
@@ -3839,7 +3957,7 @@ Credit Card, and Income accounts.")))))
 ;;
 
   ;;optional section for troubeshooting gnctimeperiod-utilities
-	;; change to (equal? 1 1) to see variables, also change #f to #t on (or consolidate? around line 3600
+	;; change to (equal? 1 1) to see variables, also change #f to #t on (or consolidate? around line 3850
 	;;       use (equal? 1 "a") to hide variables
 	(if (equal? 1 "a") ;; report will fail unless change or consolidate? (see two lines above)
 	(begin
@@ -4061,7 +4179,7 @@ Credit Card, and Income accounts.")))))
 				))
 ;;
 				   
-         ;       (if (or (not consolidate?) #t) ;; uncommet to see both consolidated and normal reports
+          ;      (if (or (not consolidate?) #t) ;; uncommet to see both consolidated and normal reports
                 (if (not consolidate?)          ;; commet to see both consolidated and normal reports             
 				(gnc:html-document-add-object!
                  document 

@@ -833,10 +833,13 @@
 			; (gnc-account-get-full-name (car account-list))   full account name
 			; (xaccAccountGetName (car account-list))     account name
 			;(addto! heading-list (_ (xaccAccountGetName (car account-list)))))
-		(addto! heading-list (_ (gnc-account-get-full-name  (car account-list)))))
-		accounts-col-list) 					
-	(gnc:html-table-append-row/markup! table row-style
+		(addto! heading-list (N_ (string-append "<b>" (gnc-account-get-full-name  (car account-list)) "</b>"))))
+		accounts-col-list)
+	(gnc:html-table-append-row! table 
                                        (reverse heading-list))
+
+	;(gnc:html-table-append-row/markup! table row-style
+    ;                                   (reverse heading-list))
 	))
 		  
 ;; end of account names as column headings
@@ -1425,7 +1428,8 @@
     (if (opt-val (N_ "Display") (N_ "Price"))
         (vector-set! column-list 7 #t))
 	(let ((amount-setting
-			(if  consolidate?
+			(if  (and consolidate?
+			(eq? (opt-val (N_ "Display") (N_ "Amount")) 'multicol))
 					'single
 			(opt-val (N_ "Display") (N_ "Amount")))))
       (if (eq? amount-setting 'single)
@@ -2798,7 +2802,7 @@ Credit Card, and Income accounts.")))))
      (make-heading-list used-columns options))
 	 
 	 (if (and optname-account-as-cols? (eq? multi-col-order 'account-code))
-		(make-multi-col-heading-list table def:alternate-row-style))
+		(make-multi-col-heading-list table def:primary-subtotal-style))
 	 	 
     ;;     (gnc:warn "Splits:" splits)
     (if (not (null? splits))
@@ -3975,7 +3979,8 @@ Credit Card, and Income accounts.")))))
 	
 	
           (if (not (null? splits))
-              (let ((table 
+              (let ((table
+					 (if (not consolidate?)
                      (make-split-table 
                       splits 
                       options
@@ -3996,11 +4001,9 @@ Credit Card, and Income accounts.")))))
                                                optname-prime-date-subtotal)
                       (get-subtotal-renderer   optname-sec-sortkey
                                                optname-sec-subtotal
-                                               optname-sec-date-subtotal)))
+                                               optname-sec-date-subtotal))
 											   
 					; for working on composite transactions/descriptions
-					(table2 
-					  (if consolidate?
                      (make-split-table-comp
 					  list_of_trans
                       options
@@ -4023,10 +4026,8 @@ Credit Card, and Income accounts.")))))
                       (comp-get-subtotal-renderer   optname-sec-sortkey
                                                optname-sec-subtotal
                                                optname-sec-date-subtotal))
-						""))
-											   
-	; end of working on composite descriptions										   
-											   )
+						))									   
+					)
 
                 (gnc:html-document-set-title! document
 											(if consolidate?
@@ -4261,22 +4262,11 @@ Credit Card, and Income accounts.")))))
 	 ))
 	
 	;end of optional section for gnctimeperiod-utilities
-    
-;;	
-	;   for working on consolidating descriptions
-				(if consolidate?
-				(gnc:html-document-add-object!
-                 document 
-                 table2
-				))
-;;
-				   
-          ;      (if (or (not consolidate?) #t) ;; uncommet to see both consolidated and normal reports
-                (if (not consolidate?)          ;; commet to see both consolidated and normal reports             
-				(gnc:html-document-add-object!
+			   
+        		(gnc:html-document-add-object!
                  document 
                  table
-				))
+				)
                 (qof-query-destroy query)
 				
 ;; show any imbalances if option choosen

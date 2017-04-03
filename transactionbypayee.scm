@@ -1,5 +1,5 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; transactionbypayee-report.scm : Report on all transactions in account(s)
+;; transaction.scm : Report on all transactions in account(s)
 ;;
 ;; Original report by Robert Merkel <rgmerk@mira.net>
 ;; Contributions by Bryan Larsen <blarsen@ada-works.com>
@@ -34,7 +34,7 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-module (gnucash report standard-reports transactionbypayee))
+(define-module (gnucash report standard-reports transaction))
 
 (use-modules (gnucash main)) ;; FIXME: delete after we finish modularizing.
 (use-modules (srfi srfi-1))
@@ -189,8 +189,20 @@
                    (N_ "search only notes")))
 			(list->vector
              (list 'memo/notes
-                   (N_ "memo/notes    ")
+                   (N_ "memo/notes ")
                    (N_ "search both memo and notes")))
+			(list->vector
+             (list 'number
+                   (N_ "check number ")
+                   (N_ "search check number and transaction number field")))
+			(list->vector
+             (list 'date
+                   (N_ "date    ")
+                   (N_  "search date ( a space has been added in front date and after date) ")))
+			(list->vector
+             (list 'reconciled-date
+                   (N_ "reconciled date ")
+                   (N_ "search reconciled date ( a space has been added in front of and after reconciled date)")))
 			(list->vector
              (list 'any
                    (N_ "any    ")
@@ -2362,14 +2374,6 @@
 Credit Card, and Income accounts.")))))
 
 
-  ;  (gnc:register-trep-option
- ;    (gnc:make-simple-boolean-option
- ;    gnc:pagename-display (N_ "Use old running balance")
- ;    "q" 
- ;     (N_ "Use old method of computing running balance , may need for different currencies")
- ;     #f))
-	  
-
   (gnc:options-set-default-section gnc:*transaction-report-options*
                                    gnc:pagename-general)
 
@@ -2451,7 +2455,7 @@ Credit Card, and Income accounts.")))))
 			(split-value-num  (gnc:gnc-numeric-num (gnc:gnc-monetary-amount split-value)))		
 				)
 ;;;;;				
-		(define (found-text? which-field text-to-find )
+		(define (found-text? which-field text-to-find ); based on entries in find-field-number
 		(if (equal? which-field 10 ) ; 'description
 			(string-contains (string-append " " (string-upcase (xaccTransGetDescription parent) ) " ")  text-to-find)
 		(if (equal? which-field  13 ) ; 'memo
@@ -2470,9 +2474,22 @@ Credit Card, and Income accounts.")))))
 			(string-contains (string-append " " (string-upcase (xaccSplitGetMemo currentsplit) ) " ")  text-to-find) ; memo
 			(string-contains (string-append " " (string-upcase (xaccTransGetNotes parent) ) " ")  text-to-find) ;notes
 			(string-contains (string-append " " (string-upcase (gnc-account-get-full-name account) ) " ")  text-to-find) ;account-name
-			(string-contains (string-append " " (string-upcase (xaccAccountGetCode account) ) " ")  text-to-find)) ; account-code			
+			(string-contains (string-append " " (string-upcase (xaccAccountGetCode account) ) " ")  text-to-find)) ; account-code
+		(if (equal? which-field 11 ) ; 'number
+			(or (string-contains (string-append " " (string-upcase (gnc-get-num-action parent currentsplit) ) " ")  text-to-find) ;num
+				(if (gnc-get-num-action parent #f)
+			(string-contains (string-append " " (string-upcase (gnc-get-num-action parent #f) ) " ")  text-to-find); Trans Number 
+			 #f))
+		(if (equal? which-field  3 ) ; 'date
+			(string-contains (string-append " " (string-upcase (gnc-print-date (gnc-transaction-get-date-posted parent) )) " ")  text-to-find) ;date
+		(if (equal? which-field  5 ) ; 'reconciled-date
+				 (let* ((date (gnc-split-get-date-reconciled currentsplit))
+						(printed-date (if (equal? date (cons 0 0))
+											""
+											(gnc-print-date date))))
+			(string-contains (string-append " " (string-upcase printed-date) " ")  text-to-find)) ;reconciled date
 			#t ; for none
-		))))))))
+		)))))))))))
 ;;;;;;		
 
 			

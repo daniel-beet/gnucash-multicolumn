@@ -590,7 +590,7 @@
 ;; for account names as column headings
 ;; called for split transactions, creates hash with account name and sum of all the
 ;;  splits in the single transaction going into that account 
-(define (accounts-for-cols-multisplit split account-types-to-reverse)
+(define (accounts-for-cols-multisplit accounts-for-cols-bal-hash split account-types-to-reverse)
 	(let* ((txn (xaccSplitGetParent split))
 		(splitcount (xaccTransCountSplits txn))
 		(splits (xaccTransGetSplitList txn))
@@ -608,6 +608,7 @@
 							(s-amount (xaccSplitGetAmount this))
 							(s-value (xaccSplitGetValue this))
 							(s-commodity (xaccAccountGetCommodity s-account))
+							(trans-guid (gncTransGetGUID s-parent ))
 							(currency (if (not (null? s-account))
 								(xaccAccountGetCommodity s-account)
 								(gnc-default-currency)))  
@@ -643,10 +644,18 @@
 			;; may want to print message in cell if mixed currencies in the split transaction
 			;;       for same account category such as expenses:auto			
                         (if (not (eq? this split))
-							(hash-set! accounts-for-cols-bal-hash s-account  (gnc-numeric-add 
-									(gnc:gnc-monetary-amount split-value) 
-							(hash-ref accounts-for-cols-bal-hash s-account (gnc-numeric-zero))  GNC-DENOM-AUTO GNC-RND-ROUND)) 
-                               )
+									(hash-set! accounts-for-cols-bal-hash s-account
+									(gnc:make-gnc-monetary report-currency
+									(gnc-numeric-add 
+									(gnc:gnc-monetary-amount
+										split-value)
+									(gnc:gnc-monetary-amount
+									(hash-ref accounts-for-cols-bal-hash s-account
+										(gnc:make-gnc-monetary report-currency (gnc-numeric-zero))))
+									 GNC-DENOM-AUTO GNC-RND-ROUND)
+									))
+                        )
+    
                             (get-s-split rest))))
 
                 (get-s-split splits)								
@@ -1259,14 +1268,23 @@
         (vector-set! column-list 6 #t))
     (if (opt-val (N_ "Display") (N_ "Price"))
         (vector-set! column-list 7 #t))
-    (let ((amount-setting (opt-val (N_ "Display") (N_ "Amount"))))
+	(let ((amount-setting
+			(if (and  optname-account-as-cols?
+				(not consolidate?))
+					'none
+			(opt-val (N_ "Display") (N_ "Amount")))))
       (if (eq? amount-setting 'single)
           (vector-set! column-list 8 #t))
       (if (eq? amount-setting 'double)
           (begin (vector-set! column-list 9 #t)
                  (vector-set! column-list 10 #t))))
-    (if (opt-val (N_ "Display") (N_ "Running Balance"))
-        (vector-set! column-list 11 #t))
+	(let ((running-bal?
+			(if (and optname-account-as-cols?
+				(not consolidate?))
+					#f
+			(opt-val (N_ "Display") (N_ "Running Balance")))))
+    (if running-bal?
+        (vector-set! column-list 11 #t)))
     (if (opt-val (N_ "Display")  (N_ "Use Full Account Name"))
         (vector-set! column-list 12 #t))
     (if (opt-val (N_ "Display") (N_ "Memo"))
@@ -1494,9 +1512,11 @@
 			(begin
 			(addto! row-contents	
 			(if  ;(or (equal? (xaccSplitGetAccount (xaccSplitGetOtherSplit split)) (car acct-split))
-			  (equal? (xaccSplitGetAccount split) (car acct-split)) ;)
+			  (equal? (xaccSplitGetAccount split) (car acct-split)) 
+
 				(gnc:make-html-table-cell/markup "number-cell"
-              (gnc:html-transaction-anchor parent split-value))
+					(gnc:html-transaction-anchor parent 
+					(gnc:make-gnc-monetary report-currency split-value)))
 				" "))))
 			accounts-col-list
 		)
@@ -1505,7 +1525,7 @@
 		(if (< 1 splitcount)
 			(begin
 		   (set! accounts-for-cols-bal-hash (make-hash-table))
-		   (accounts-for-cols-multisplit split account-types-to-reverse))
+		   (accounts-for-cols-multisplit accounts-for-cols-bal-hash split account-types-to-reverse))
 		   )
 	  (for-each (lambda (acct-split)
 		(begin
@@ -1513,7 +1533,8 @@
 			(let ((the_amount (hash-ref accounts-for-cols-bal-hash (car acct-split) #f ))) ;;(gnc-numeric-zero))))
 				(if  the_amount
 			(gnc:make-html-table-cell/markup "number-cell"
-              (gnc:html-transaction-anchor parent the_amount))
+              (gnc:html-transaction-anchor parent 
+			  the_amount))
 		" ")))))
 		accounts-col-list))
 		))

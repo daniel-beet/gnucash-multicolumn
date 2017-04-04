@@ -1334,7 +1334,7 @@
 (define (get-account-types-to-reverse options)
     (cdr (assq (gnc:option-value 
                 (gnc:lookup-option options
-                                   (N_ "Display")
+                                   gnc:pagename-display
                                    (N_ "Sign Reverses")))
                account-types-to-reverse-assoc-list)))
 
@@ -1406,29 +1406,29 @@
     (gnc:option-value 
      (gnc:lookup-option options section name)))
   (let ((column-list (make-vector columns-used-size #f)))
-    (if (opt-val (N_ "Display") (N_ "Date"))
+    (if (opt-val gnc:pagename-display (N_ "Date"))
         (vector-set! column-list 0 #t))
-    (if (opt-val (N_ "Display") (N_ "Reconciled Date"))
+    (if (opt-val gnc:pagename-display (N_ "Reconciled Date"))
         (vector-set! column-list 1 #t))
-    (if (if (gnc:lookup-option options (N_ "Display") (N_ "Num"))
-            (opt-val (N_ "Display") (N_ "Num"))
-            (opt-val (N_ "Display") (N_ "Num/Action")))
+    (if (if (gnc:lookup-option options gnc:pagename-display (N_ "Num"))
+            (opt-val gnc:pagename-display (N_ "Num"))
+            (opt-val gnc:pagename-display (N_ "Num/Action")))
         (vector-set! column-list 2 #t))
-    (if (opt-val (N_ "Display") (N_ "Description"))
+    (if (opt-val gnc:pagename-display (N_ "Description"))
         (vector-set! column-list 3 #t))
-    (if (opt-val (N_ "Display") (N_ "Account Name"))
+    (if (opt-val gnc:pagename-display (N_ "Account Name"))
         (vector-set! column-list 4 #t))
-    (if (opt-val (N_ "Display") (N_ "Other Account Name"))
+    (if (opt-val gnc:pagename-display (N_ "Other Account Name"))
         (vector-set! column-list 5 #t))
-    (if (opt-val (N_ "Display") (N_ "Shares"))
+    (if (opt-val gnc:pagename-display (N_ "Shares"))
         (vector-set! column-list 6 #t))
-    (if (opt-val (N_ "Display") (N_ "Price"))
+    (if (opt-val gnc:pagename-display (N_ "Price"))
         (vector-set! column-list 7 #t))
 	(let ((amount-setting
 			(if  (and consolidate?
-			(eq? (opt-val (N_ "Display") (N_ "Amount")) 'multicol))
+			(eq? (opt-val gnc:pagename-display (N_ "Amount")) 'multicol))
 					'single
-			(opt-val (N_ "Display") (N_ "Amount")))))
+			(opt-val gnc:pagename-display (N_ "Amount")))))
       (if (eq? amount-setting 'single)
           (vector-set! column-list 8 #t))
       (if (eq? amount-setting 'double)
@@ -1439,24 +1439,24 @@
 	(let ((running-bal?
 			(if optname-account-as-cols?
 					#f
-			(opt-val (N_ "Display") (N_ "Running Balance")))))
+			(opt-val gnc:pagename-display (N_ "Running Balance")))))
     (if running-bal?
         (vector-set! column-list 11 #t)))
-    (if (opt-val (N_ "Display")  (N_ "Use Full Account Name"))
+    (if (opt-val gnc:pagename-display  (N_ "Use Full Account Name"))
         (vector-set! column-list 12 #t))
-    (if (opt-val (N_ "Display") (N_ "Memo"))
+    (if (opt-val gnc:pagename-display (N_ "Memo"))
         (vector-set! column-list 13 #t))
-    (if (opt-val (N_ "Display") (N_ "Account Code"))
+    (if (opt-val gnc:pagename-display (N_ "Account Code"))
         (vector-set! column-list 14 #t))
-    (if (opt-val (N_ "Display") (N_ "Other Account Code"))
+    (if (opt-val gnc:pagename-display (N_ "Other Account Code"))
         (vector-set! column-list 15 #t))
-    (if (opt-val (N_ "Display") (N_ "Use Full Other Account Name"))
+    (if (opt-val gnc:pagename-display (N_ "Use Full Other Account Name"))
         (vector-set! column-list 16 #t))
-    (if (opt-val (N_ "Sorting") (N_ "Show Account Code"))
+    (if (opt-val pagename-sorting (N_ "Show Account Code"))
         (vector-set! column-list 17 #t))
-    (if (opt-val (N_ "Sorting") (N_ "Show Full Account Name"))
+    (if (opt-val pagename-sorting (N_ "Show Full Account Name"))
         (vector-set! column-list 18 #t))
-    (if (opt-val (N_ "Display") (N_ "Notes"))
+    (if (opt-val gnc:pagename-display (N_ "Notes"))
         (vector-set! column-list 19 #t))
     column-list))
 
@@ -2685,8 +2685,9 @@ Credit Card, and Income accounts.")))))
                     (_ "  Total")
                     total-collector def:grand-total-style export?));; print totals for the account columns
 	
-	  (if (gnc:option-value (gnc:lookup-option options "Display" "Totals"))
-	      (render-grand-total table width total-collector export?)))
+	  (if (and  (not optname-account-as-cols?) 
+		(gnc:option-value (gnc:lookup-option options gnc:pagename-display "Totals"))) ;no grand total for multi-col
+	      (render-grand-total table width total-collector export?)))				;  since don't know how to put on same line as total
 	
         (let* ((current (car splits))
                (current-row-style (if multi-rows? def:normal-row-style
@@ -4311,8 +4312,6 @@ Credit Card, and Income accounts.")))))
 	))))
 ;end for showing imbalance	
 				
-				
-				)
               ;; error condition: no splits found
               (let ((p (gnc:make-html-text)))
                 (gnc:html-text-append! 
@@ -4324,7 +4323,7 @@ Credit Card, and Income accounts.")))))
 match the time interval and account selection specified \
 in the Options panel.")))
                 (gnc:html-document-add-object! document p)))
-
+)
         ;; error condition: no accounts specified or no transactions found
  (if (not (or (null? c_account_1) (and-map not c_account_1)))
 	;; error condition: no splits found

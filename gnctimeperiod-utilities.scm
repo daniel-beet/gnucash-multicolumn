@@ -29,16 +29,19 @@
 
 ;;note gnc:days-in-month is also exported by date-utilities.scm
 (define-module (gnucash gnctimeperiod-utilities)
-   #:export (gnc:getdates gnc:list-years gnc:list-periods 
-             gnc:list-lasts gnc:list-months gnc:list-operands
+   #:export (gnc:getdates  gnc:getdatedelta gnc:list-years gnc:list-periods 
+             gnc:list-lasts gnc:list-months gnc:list-operands gnc:list-comparechoices
 			 gnc:daysinmonth gnc:dayofweek gnc:day-of-year gnc:set_yday gnc:day-of-week gnc:decrement-date
 			 ))
 (use-modules (gnucash gettext))
 
 (use-modules (gnucash gnc-module))
 
-(gnc:module-load "gnucash/report/report-system" 0) 
-;;dbd start
+(gnc:module-load "gnucash/report/report-system" 0)
+
+(define-macro (addto! alist element)
+  `(set! ,alist (cons ,element ,alist))) 
+
 (define now (timespecCanonicalDayTime (cons (current-time) 0)))
 (define today-tm (gnc:timepair->date now))
 (define this_year (+ 1900 (tm:year today-tm)))
@@ -118,6 +121,17 @@
 (define divide "divide")
 
 (define month-of "Month of ")
+
+(define  text-none "none          ")
+(define text-days "days")
+(define text-weeks "weeks")
+(define text-twoweeks "two week periods")
+(define text-halfmonths "half months")
+(define text-months "months")
+(define text-halfquarters "half quarters")
+(define text-quarters "quarters")
+(define text-halfyears "half years")
+(define text-years "years")
 
 (define gnc:list-years 
    (list (list->vector
@@ -361,6 +375,50 @@
   )
 )
 
+(define gnc:list-comparechoices
+   (list (list->vector
+             (list 'none
+                   (N_ text-none)
+                   (N_ "Show as one period")))
+			(list->vector
+             (list 'days
+                   (N_ text-days)
+                   (N_ "show one day periods")))
+			(list->vector
+             (list 'weeks
+                   (N_ text-weeks)
+                   (N_ "show one week periods")))
+            (list->vector
+             (list 'twoweeks
+                   (N_ text-twoweeks)
+                   (N_ "show two week periods")))
+			(list->vector
+             (list 'halfmonths
+                   (N_ text-halfmonths)
+                   (N_ "show half month periods")))
+            (list->vector
+             (list 'months
+                   (N_ text-months)
+                   (N_ "show one month periods")))
+			(list->vector
+             (list 'halfquarters
+                   (N_ text-halfquarters)
+                   (N_ "show half quarter periods")))
+            (list->vector
+             (list 'quarters
+                   (N_ text-quarters)
+                   (N_ "show quarter periods")))
+			(list->vector
+             (list 'halfyears
+                   (N_ text-halfyears)
+                   (N_ "show half year periods")))
+			(list->vector
+             (list 'years
+                   (N_ text-years)
+                   (N_ "show full year periods")))
+           )
+)
+
 (define (gnc:leap-year? n)
 	(apply (lambda (a b c) (or a (and (not b) c)))
        (map (lambda (m) (zero? (remainder n m)))
@@ -402,6 +460,7 @@
 	
 (define (gnc:dayofyear year month day)
 ;; month (0-11)  (ie. jan=0)
+;; for dec 31 2018 use (gnc:dayofyear 2018 11 31)
 (let ((mnth 0)
 	 (dy day))
   (while (< mnth month )
@@ -433,6 +492,13 @@
 	  (yr (-(+ (tm:year date) 1900) 1)))
 	(remainder  (+ (- (quotient yr 4)(quotient yr 100)) (quotient yr 400) yr (gnc:day-of-year date)) 7)
 	))
+
+(define (gnc:days-total date) 
+;; 0- Sun  6-Sat
+  (let (
+	  (yr (-(+ (tm:year date) 1900) 1)))
+	 (+ (- (quotient yr 4)(quotient yr 100)) (quotient yr 400) yr (gnc:day-of-year date))
+	))
  
  (define (gnc:decrement-date date decrement) 
 ;;
@@ -451,6 +517,23 @@
 	(set! yday (- yday decrement))
 	(gnc:set_yday yr yday)
    ))
+   
+(define (gnc:increment-date date increment) 
+;;
+  (let* (
+	 (yr (+ (tm:year date) 1900) )
+	 (yday (gnc:day-of-year date))
+	 (endyear (gnc:dayofyear yr 11 31)))
+  (while (> (+ yday increment) endyear)
+    (begin 
+	(set! yr (+ yr 1) )
+	(set! increment (- increment (- (+ endyear 1) yday)))
+	(set! yday (gnc:dayofyear yr 0 1))
+	(set! endyear (gnc:dayofyear yr 11 31))
+	))
+	(set! yday (+ yday increment))
+	(gnc:set_yday yr yday)
+   )) 
  
 (define (gnc:decrement-month date decrement)
 	(let (
@@ -496,7 +579,15 @@
 		; years match
 		(< (gnc:day-of-year tm1) (gnc:day-of-year tm2))
 	))
-	
+(define (min-date tm1 tm2)
+ (if (gnc:date-lt? tm1 tm2)
+	tm1
+	tm2)
+)
+
+(define (gnc:delta-days tm1 tm2)
+ (- (gnc:days-total tm2) (gnc:days-total tm1) )
+) 
  	
 		  
 ;;
@@ -580,10 +671,10 @@
 				(set! period_end (gnc:increment-month-less-1-day period_start 3))		        		     
 		           	)
 			((weektodate)
-					(let ((day (gnc:day-of-week today-tm)))
 					 (set-tm:year period_end year_end)
 					 (set-tm:mon period_end thismonth)
 		          	 (set-tm:mday period_end thisday)
+					 (let ((day (gnc:day-of-week period_end)))
 		          	 (set! period_start (gnc:decrement-date period_end day)))
 		            )					
 			((mnthtodate)
@@ -693,10 +784,11 @@
 						(set! period_start (gnc:decrement-month period_start 1))	
 						)
 			((last_wk)
-					(let ((day (gnc:day-of-week today-tm)))
+					
 					 (set-tm:year period_end year_end)
 					 (set-tm:mon period_end thismonth)
 		          	 (set-tm:mday period_end thisday)
+					 (let ((day (gnc:day-of-week period_end)))
 		          	 (set! period_end (gnc:decrement-date period_end (+ day 1) )) 
 				     (set! period_start (gnc:decrement-date period_end 6)))
 					)				
@@ -829,7 +921,107 @@
 		
 		(list (gnc:timepair-start-day-time  (gnc:date->timepair period_start))
           (gnc:timepair-end-day-time  (gnc:date->timepair period_end)) )
-          ))
-    
+          )
+)
+   
+  (define (gnc:getdatedelta userpicks)	
+  ;; returns list consisting of elements of  (begin-date end-date delta-days-between-begin-and-end)
+	(let (
+		(periods '())
+		(start-date (gnc:timepair->date (car userpicks)))
+		(end-date (gnc:timepair->date (cadr userpicks)))
+		(deltas-val (caddr userpicks))
+		(date-start (gnc:timepair->date (car userpicks)))
+		(date-end (gnc:timepair->date (cadr userpicks)))
+		)
+	(define (addto-periods! date-start date-end)
+		(let ( (element (list (gnc:date->timepair date-start) (gnc:date->timepair date-end) 
+		       (+ (gnc:delta-days date-start date-end) 1)) ))
+				(addto! periods element))
+		)
+		(case deltas-val
+		((none)
+			(addto-periods! start-date end-date))
+		((days)
+			(set! date-end (gnc:increment-date date-start 0 ))
+			(while (gnc:date-lt? date-start end-date)
+				(begin
+					(addto-periods! date-start date-end)
+					(set! date-start (gnc:increment-date date-start 1))
+					(set! date-end (gnc:increment-date date-end 1))
+				)))
+		((weeks)
+			(set! date-end (gnc:increment-date date-start 6 ))
+			(while (gnc:date-lt? date-start end-date)
+				(begin
+					(addto-periods! date-start (min-date date-end end-date))
+					(set! date-start (gnc:increment-date date-start 7))
+					(set! date-end (gnc:increment-date date-end 7))
+				)))
+		((twoweeks)
+			(set! date-end (gnc:increment-date date-start 13 ))
+			(while (gnc:date-lt? date-start end-date)
+				(begin
+					(addto-periods! date-start (min-date date-end end-date))
+					(set! date-start (gnc:increment-date date-start 14))
+					(set! date-end (gnc:increment-date date-end 14))
+				)))
+		((halfmonths)			
+			(while (gnc:date-lt? date-start end-date)
+				(begin
+					(set! date-end (gnc:increment-date date-start 14 ))
+					(addto-periods! date-start date-end)
+					(set! date-end (gnc:increment-month-less-1-day date-start 1))
+					(set! date-start (gnc:increment-date date-start 15))
+					(if (gnc:date-lt? date-start end-date)
+					(addto-periods! date-start date-end))
+					(set! date-start (gnc:increment-date date-end 1))
+				)))
+		((months)
+			(while (gnc:date-lt? date-start end-date)
+				(begin
+					(set! date-end (gnc:increment-month-less-1-day date-start 1))
+					(addto-periods! date-start (min-date date-end end-date))
+					(set! date-start (gnc:increment-month date-start 1))
+				)))
+		((halfquarters)
+			(while (gnc:date-lt? date-start end-date)
+				(begin
+					(set! date-end (gnc:increment-month-less-1-day date-start 3)) ;full quarter
+					(set! date-end (gnc:increment-date date-start 
+								(floor (/ (gnc:delta-days date-start date-end) 2)))); 1/2 way 
+					(addto-periods! date-start (min-date date-end end-date))
+					(set! start-date (gnc:increment-date date-end 1))
+					(set! date-end (gnc:increment-month-less-1-day date-start 3))
+					(set! date-start (gnc:increment-date start-date 0))
+					(if (gnc:date-lt? date-start end-date)
+					(addto-periods! date-start (min-date date-end end-date)))
+					(set! date-start (gnc:increment-date date-end 1))
+				)))
+		((quarters)
+			(while (gnc:date-lt? date-start end-date)
+				(begin
+					(set! date-end (gnc:increment-month-less-1-day date-start 3))
+					(addto-periods! date-start (min-date date-end end-date))
+					(set! date-start (gnc:increment-month date-start 3))
+				)))
+		((halfyears)
+			(while (gnc:date-lt? date-start end-date)
+				(begin
+					(set! date-end (gnc:increment-month-less-1-day date-start 6))
+					(addto-periods! date-start (min-date date-end end-date))
+					(set! date-start (gnc:increment-month date-start 6))
+				)))
+		((years)
+			(while (gnc:date-lt? date-start end-date)
+				(begin
+					(set! date-end (gnc:increment-month-less-1-day date-start 12))
+					(addto-periods! date-start (min-date date-end end-date))
+					(set! date-start (gnc:increment-month date-start 12))
+				)))
+			)
+		(reverse periods)
+)
+)  
     
  

@@ -29,12 +29,8 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; 5. Need to not sort list_of_trans and change source of amounts in source to amounts-array column 1
-; 4. based on multi-column - total each column
-; 3. Need to fix find command
-; 2. add headings for each period
-; 1. divide 2nd period into multiple columns/periods
-;;    set find text to account name  and text to    ho
+; 2. based on multi-column - total each column
+; 1. create delta table
 
 
 (define-module (gnucash report standard-reports transactioncomparison))
@@ -107,7 +103,7 @@
 (define optname-descript-titlecase (N_ "Titlecase the first chracter in each word in description"))
 
 ;; add for scaling
-(define scaling-text "Note: amount and balance")
+(define scaling-text "Note: amount and balance have been scaled.")
 
 ;; added for flagging imbalances when account name is primary key
 (define optname-show-imbalance
@@ -116,7 +112,7 @@
   (N_ "Make a footnote if there is an imbalance when account name or account code is selected as the primary key and find not used"))
  
 (define text-note-account " Note - account   ")
-(define text-changed-in-value " changed in value by ")
+(define text-changed-in-value " in the base period  changed in value by ")
 (define text-dash (_ "-")) ; printed to indicate imbalance was checked for
 
 ;; for find
@@ -242,14 +238,9 @@
 
 
 ;for find
-(define scale-num	
-		(list
-		(cons '*  (vector gnc-numeric-mul (N_ "multiplied by ")))
-		(cons '/  (vector gnc-numeric-div (N_ "divided by ")))
-		))
 
-		
 (define do-find? #f)
+(define do-findamount? #f)
 (define find-min? #f)
 (define find-max? #f)
 (define find-text? #f)
@@ -271,15 +262,17 @@
 ;;for scaling
 (define scale-op-val '*)
 (define scale-num-val 1)
-(define scale-num-numeric (gnc:make-gnc-numeric 1 1))
+(define scaled? #f)
+(define compare-scale-automatically? #f)
+(define compare-scale-to-val 1)
 
 ;;for scaling comparison period
 (define scale-op-val2 '*)
 (define scale-num-val2 1)
-(define scale-num-numeric2 (gnc:make-gnc-numeric 1 1))
 
 
 (define description-titlecase? #t)
+(define columns-headings 0)
 		
 ;; for consolidate descriptions (create composite  - to combine multiple entries with same payee)
 (define curr " ")
@@ -288,7 +281,7 @@
 (define currency-type "1")
 (define now (timespecCanonicalDayTime (cons (current-time) 0)))
 (define today-tm (gnc:timepair->date now))
-(define list_of_trans '((a 1) (b 2)))
+(define list_of_trans '())
 (define sort-date-type 7)
 
 (define (sort-test x y var-p var-s comp-p1 comp-p2 comp-s1 comp-s2  )
@@ -316,7 +309,7 @@
 (define currency-lookup-hash (make-hash-table) )
 
 (define pointer-hash (make-hash-table))
-(define amounts-array (make-array #f 2 3))
+(define amounts-array (make-array #f 2 3)) ; col 0 = currency type ; col 1 and greater - period 
 (define guid-array (make-array #f 2 3))
 (define row-number 2); row 0 heading         row 1 number of days in the period
 (define column 1)
@@ -495,9 +488,9 @@
 		thekey)
 		))
 		
-(define (get-accountguid row)
+(define (get-accountguid transaction)
 ;; we stored (account-guid (gncAccountGetGUID account))
-	(let* (
+	(let* ( (row (get-row-in-array transaction))
 		(accountguid (cadr (array-ref guid-array row 0))))
 		(if accountguid
 		accountguid
@@ -512,7 +505,7 @@
 		transguid
 		))
 		
-(define (get-split-value transaction)
+(define (get-split-value-numer transaction)
 	(let (
 			(split-value-comp (cdr transaction))
 			;  (split-value-comp (gnc:make-gnc-numeric 12 1))
@@ -520,17 +513,21 @@
 			split-value-comp)
 )
 			
-(define (get-split-value-num transaction)
-	(let ((value-num (gnc:gnc-numeric-num  (cdr transaction))))
-			;(value-num (gnc:gnc-numeric-num (gnc:make-gnc-numeric 12 1))))
-	(if  value-num
-		value-num
-		0 ))
-	
+
+(define (get-row-in-array transaction)
+	(cdr transaction)
 )
-(define (get-row-in-array key)
-	(cdr key)
-)
+(define (get-array-value-num-base transaction) ;note values are scaled when stored in array
+	(let* ( (row (get-row-in-array transaction))
+			(split-value-ar 		
+					(array-ref amounts-array row 1)) ;column is 1 since for base period
+			(value (if (gnc:gnc-monetary? split-value-ar)
+					(gnc:gnc-numeric-num (gnc:gnc-monetary-amount split-value-ar))			
+					    0.0)))
+			value
+			)
+)	
+
 (define (get-monetary key column) ;note values are scaled when stored in array
 	(let* ( (row (get-row-in-array key))
 			(split-value-ar 		
@@ -563,9 +560,9 @@
                        (get-gnc:comp-transaction-anchor-text row column)
                        text)))
 	
-(define (get-gnc:account-anchor-text row)
+(define (get-gnc:account-anchor-text split-trans)
 	;(gnc:register-guid "acct-guid=" (gncAccountGetGUID acct)))
-	(let* ( (acctguid (get-accountguid row)))
+	(let* ( (acctguid (get-accountguid split-trans)))
 		(if acctguid 
 			(gnc:comp-register-guid "acct-guid=" acctguid)
 			"")))
@@ -594,7 +591,7 @@
 	  
 
 ;; for consolidating			
-(define (sortpayees payee-hash var-p var-s comp-p1 comp-p2 comp-s1 comp-s2)(sort (hash-map->list cons payee-hash) 
+(define (sortkeys list-thekeys var-p var-s comp-p1 comp-p2 comp-s1 comp-s2)(sort list-thekeys 
 			;1 sort by primary key and secondary key
 			;2 sort by primary key and amount
 			;3 sort by amount and secondary key
@@ -715,7 +712,7 @@
   (let ((accountname  (get-accountname-from-sort the-key split-trans)))
     (comp-add-subheading-row (gnc:make-html-text
                          (gnc:html-markup-anchor
-                           (get-gnc:account-anchor-text 4) ; dbd fix
+                           (get-gnc:account-anchor-text split-trans) ; dbd fix
                            accountname) )
                         table width subheading-style)))
 
@@ -725,7 +722,7 @@
     (comp-add-subheading-row (gnc:make-html-text
                          (gnc:html-markup-anchor
                           (if (not (null? split-trans))
-                           (get-gnc:account-anchor-text 4);dbd fix
+                           (get-gnc:account-anchor-text split-trans);dbd fix
                            "")
                            accountname) )
                         table width subheading-style)))
@@ -1065,9 +1062,11 @@
     (if (used-amount-single column-vector)
        ; (addto! heading-list (_ "Amount")))
 		(addto!  heading-list
+		(gnc:make-html-table-cell/markup
+                       "column-heading-center" 
       			(array-ref amounts-array 
 							0 1
-							 )))
+							 ))))
     ;; FIXME: Proper labels: what?
     (if (used-amount-double-positive column-vector)
         (addto! heading-list (_ "Debit")))
@@ -1075,79 +1074,83 @@
         (addto! heading-list (_ "Credit")))
     (if (used-running-balance column-vector)
         (addto! heading-list (_ "Balance")))
+	(set! columns-headings (length heading-list))
+	;(if compare?
 	(let* ( (col 2))
 			(while (<= col column)
         (addto!  heading-list
+		(gnc:make-html-table-cell/markup
+                       "column-heading-center" 
 		        (array-ref amounts-array 
 							0 col
-							 ))
+							 )))
 		(set! col (+ col 1))))
+;	)
     (reverse heading-list)))
 ;;
-(define (make-multi-col-heading-list table row-style) ;;delete this define to-do fixme
-  (let ((heading-list '())
-		(count 1))
-		(while (< count account-col-start)
-            (addto! heading-list  (gnc:html-make-empty-cell))         
-		(set! count (+ count 1)))
-		
-		(for-each (lambda (account-list)
-		 ;; change how multi-column headings print by changing following line.  Possibilities are:
-		 	; (xaccAccountGetCode (car account-list))      account code
-			; (gnc-account-get-full-name (car account-list))   full account name
-			; (xaccAccountGetName (car account-list))     account name
-			;(addto! heading-list (_ (xaccAccountGetName (car account-list)))))
-		(addto! heading-list (gnc:make-html-text (gnc:html-markup-b (gnc-account-get-full-name  (car account-list))))))
-		accounts-col-list)
-	(gnc:html-table-append-row! table 
-              (reverse heading-list))
-		))
-	
 
 ;;
-(define (make-heading-days column-vector options table row-style)
-  (let ((heading-list '()))
-    (if (used-description column-vector)
-        (addto! heading-list (_ " ")))
-    (if (used-memo column-vector)
-        (if (used-notes column-vector)
-            (addto! heading-list (string-append (_ " ") "/" (_ " ")))
-            (addto! heading-list (_ " "))))
-    (if (or (used-account-name column-vector) (used-account-code column-vector))
-        (addto! heading-list (_ " ")))
-    (if (or (used-other-account-name column-vector) (used-other-account-code column-vector))
-        (addto! heading-list (_ " ")))
-    (if (used-shares column-vector)
-        (addto! heading-list (_ " ")))
-    (if (used-price column-vector)
-        (addto! heading-list (_ " ")))
-    (if (used-amount-single column-vector)
-       ; (addto! heading-list (_ " ")))
-		(addto!  heading-list (gnc:make-html-text (gnc:html-markup-b 
-			(display-num-days
-      			(array-ref amounts-array 
-							1 1
-							 ))))))
-    ;; FIXME: Proper labels: what?
-    (if (used-amount-double-positive column-vector)
-        (addto! heading-list (_ " ")))
-    (if (used-amount-double-negative column-vector)
-        (addto! heading-list (_ " ")))
-    (if (used-running-balance column-vector)
-        (addto! heading-list (_ " ")))
-	(let* ( (col 2))
-			(while (<= col column)
-        (addto!  heading-list
-				(gnc:make-html-text (gnc:html-markup-b 
+(define (make-heading-days table row-style)
+  (let ((heading-list '())
+		(col 2))
+		(addto!  heading-list
+			(gnc:make-html-text (gnc:html-markup-b 
+				(_ "  Number of Days:"))))
+		(while (< col columns-headings)
+			(addto!  heading-list
+				(_ " "))
+			(set! col (+ col 1)))
+ 
+	(let* ( (col 1))
+		(while (<= col column)
+			(addto!  heading-list
+				(gnc:make-html-table-cell/markup
+                  "column-heading-right" 
 				(display-num-days
 		        (array-ref amounts-array 
 							1 col
-							 )))))
-		(set! col (+ col 1))))
+							 ))))
+			(set! col (+ col 1))))
 	(gnc:html-table-append-row! table 
-    (reverse heading-list))))  
-	
+    (reverse heading-list)))
+)  
 
+(define (make-heading-scale table row-style)
+  (let ((heading-list '())
+		(col 2))
+		(addto!  heading-list
+			(gnc:make-html-text (gnc:html-markup-b
+				(if compare-scale-automatically?
+					
+					(_ "  Scaled to:")
+					(_ "  Scaled by:")))))
+		(while (< col columns-headings)
+			(addto!  heading-list
+				(_ " "))
+			(set! col (+ col 1)))
+		(addto!  heading-list
+			;(gnc:make-html-text (gnc:html-markup-b
+			(gnc:make-html-table-cell/markup
+                       "column-heading-right" 
+				(if compare-scale-automatically?
+					(_ (number->string compare-scale-to-val))
+					(_ (string-append (vector-ref (cdr (assq scale-op-val  scale-num)) 1) (number->string scale-num-val))))))		
+				;	(_ (number->string scale-num-val))))) dbd delete
+ 
+	(let* ( (col 2))
+		(while (<= col column)
+			(addto!  heading-list
+			(gnc:make-html-table-cell/markup
+                  "column-heading-right" 
+				(if compare-scale-automatically?
+					(_ (number->string compare-scale-to-val))
+					(_ (string-append (vector-ref (cdr (assq scale-op-val2  scale-num)) 1) (number->string scale-num-val2))))))				
+				;	(_ (number->string scale-num-val2)))))
+			(set! col (+ col 1))))
+	(gnc:html-table-append-row! table 
+    (reverse heading-list)))
+)  	
+  
 ;; following section for composite/consolidate transactions
 (define (add-split-row-comp table split-trans column-vector options
                        row-style account-types-to-reverse transaction-row?)
@@ -1166,9 +1169,19 @@
 		(split-value-ar-coll (if (get-reverse-sign? split-trans)
 			    (gnc:make-gnc-monetary report-currency (gnc-numeric-neg (gnc:gnc-monetary-amount split-value-ar)))
 			    split-value-ar))
-		)
-    
-
+		(found? #t)
+		(col 1))
+		
+		(if do-findamount?
+			(begin
+				(set! found? #f)
+				(while (<= col column)
+				(if (find-monetary? (get-monetary split-trans col))
+				;(if (>= (gnc:gnc-numeric-num (gnc:gnc-monetary-amount (get-monetary split-trans col))) find-min )
+					(set! found? #t))
+		(set! col (+ col 1)))
+		))
+	
     (if (used-description column-vector)
         (addto! row-contents
                 (if transaction-row?
@@ -1198,20 +1211,21 @@
 		 " "))
  
 	(if (used-amount-single column-vector)
-		(let* ( (col 1))
-			(while (<= col column)
-        (addto! row-contents
-	; the amount if single column is printed here
-                (gnc:make-html-table-cell/markup "number-cell"
-                            (gnc:comp-html-transaction-anchor
-							row-in-array col
-							 (get-monetary split-trans col))))
-		(set! col (+ col 1)))))
-			
-	
+		
+			(let* ( (colmn 1))
+			(while (<= colmn column)
+				(addto! row-contents
+				; the amount if single column is printed here
+				(gnc:make-html-table-cell/markup "number-cell"
+                    (gnc:comp-html-transaction-anchor
+						row-in-array colmn
+						(get-monetary split-trans colmn))))
+				(set! colmn (+ colmn 1))))
+		)
+	(if found?
 	(gnc:html-table-append-row/markup! table row-style
-                                       (reverse row-contents))
-    split-value-ar-coll))
+                                       (reverse row-contents)))
+    split-value-ar-coll));fix - used for adding to total
 
 ;end section -consolite
 	
@@ -1328,7 +1342,7 @@
 			(lambda (x)
 		(gnc-option-db-set-option-selectable-by-name
          periodoptions pagename-compare optname-no-base?
-		 (not x)))
+		 x))
 		 ))
      
 		
@@ -1418,7 +1432,7 @@
 	(gnc:register-trep-option
 		(gnc:make-simple-boolean-option
 			pagename-compare optname-scale-automatically?
-			"e" (N_ "Compare multiple periods") #f))
+			"e" (N_ "Scale all periods to number of days given below") #f))
 			
 	(gnc:register-trep-option
 		(gnc:make-number-range-option pagename-compare optname-scale-to
@@ -1680,7 +1694,7 @@
       pagename-sorting optname-sec-sortkey
       "f"
       (N_ "Sort by this criterion second.")
-      'date
+      'none
       key-choice-list #f
       (lambda (x)
         (gnc-option-db-set-option-selectable-by-name
@@ -1902,7 +1916,7 @@ Credit Card, and Income accounts.")))))
 
 
   (gnc:options-set-default-section gnc:*transaction-report-options*
-                                   pagename-general)
+                                   pagename-compare)
 
   gnc:*transaction-report-options*)
 
@@ -1911,11 +1925,11 @@ Credit Card, and Income accounts.")))))
   (let ((begin-string (gnc-print-date begin))
         (end-string (gnc-print-date end)))
     (sprintf #f (_ "From %s To %s%s") begin-string end-string findtitle)))
-	
-(define (display-num-daysx days)
-  (let ((days-string (number->string days))
-        )
-    (sprintf #f (_ " %s") days-string )))
+
+(define (display-date-interval-columns begin end)
+  (let ((begin-string (gnc-print-date begin))
+        (end-string (gnc-print-date end)))
+    (sprintf #f (_ "From %s To %s") begin-string end-string )))	
 
 (define (display-num-days days)
   (if (number? days)
@@ -1989,7 +2003,6 @@ Credit Card, and Income accounts.")))))
 							;; on the same day.  Otherwise it uses midnight which will
 							;; likely match a price on the previous day
 							(timespecCanonicalDayTime trans-date)))
-			(split-value-num  (gnc:gnc-numeric-num (gnc:gnc-monetary-amount split-value)))		
 				)
 ;;;;;				
 		(define (found-text? which-field text-to-find ); based on entries in find-field-number
@@ -2050,30 +2063,14 @@ Credit Card, and Income accounts.")))))
 		
 	;
 
-(define (filtersplitscomp-found splits ) ; only handles ammount - the find for text was handled earlier
-	;; note this works for list_of_trans  BUT NOT FOR list-thekeys
-	(define (splitcompfound? currentsplit ) 
-		;  (if (not (null? splits))
-		;;;;
-		(let* (
-			(split-value (get-split-value currentsplit))
-			(split-value-num  (gnc:gnc-numeric-num  split-value))		
-			)
-
+(define (find-monetary? value-monetary) ; only handles ammount - the find for text was handled earlier
+		(let ((value-num (gnc:gnc-numeric-num (gnc:gnc-monetary-amount value-monetary))))
 			(and
-				(or (not find-min?) (>= split-value-num find-min ))
-				(or (not find-max?) (<= split-value-num find-max ))
-				)				
+				(or (not find-min?) (>= value-num find-min ))
+				(or (not find-max?) (<= value-num find-max ))				
 			)
-		)
-	;;;;
-	;; find for composite
-		(if (or find-min? find-max?)
-		(filter splitcompfound? splits )
-		splits)
-		)
-		
-	;
+))
+
 ;;
 ; swap hash table keys and values so can look up stored currency string and get currency
 (define (hash-for-eachq x) (lambda (key val)	
@@ -2167,7 +2164,7 @@ Credit Card, and Income accounts.")))))
   			(rest-trans (cdr list-thekeys))
  			(next-trans (if (null? rest-trans) #f
 						(car rest-trans)))
-			(split-value (add-split-row-comp
+			(split-value (add-split-row-comp ;;dbd will change to   (found? (add-spl ...)
                             table 
 							current-trans
 	                        used-columns
@@ -2262,7 +2259,7 @@ Credit Card, and Income accounts.")))))
 
 
   (let* ((table (gnc:make-html-table))
-         (width (+ (num-columns-required used-columns) 55)) ;dbd fix
+         (width (+ (num-columns-required used-columns) column))
          (multi-rows? (transaction-report-multi-rows-p options))
 	 (export? (transaction-report-export-p options))
          (account-types-to-reverse
@@ -2272,8 +2269,10 @@ Credit Card, and Income accounts.")))))
      table
     (make-heading-list used-columns options))
 	
-	(if #t  ;; fixme dbd fix me
-	 (make-heading-days used-columns options table def:primary-subtotal-style))
+	(if #t  ;; fixme dbd fix me - add display option show days? move above make-heading? if so, need count columns first
+	 (make-heading-days table def:primary-subtotal-style))
+	(if scaled?
+	 (make-heading-scale table def:primary-subtotal-style))
     ;;     (gnc:warn "Split-trans:" split-transs)
     (if (not (null? list-thekeys))
         (begin
@@ -2506,18 +2505,18 @@ Credit Card, and Income accounts.")))))
 	;;   compare-first-variable-if-reverse-sort get-second-variable compare-second-variable 
 	;;   compare-second-standard-oder  compare-second-variable-reverse-order ))
     (list
-	;;      comparing                how to get variable   match      ascend     	   descend  
-    (cons 'primary_secondary (vector get-primary-key     string-ci=? string-ci<?	 string-ci>?
-									 get-secondary-key   string-ci=? string-ci<?	 string-ci>? ))
+	;;      comparing                how to get variable   		match      ascend     	   descend  
+    (cons 'primary_secondary (vector get-primary-key     		string-ci=? string-ci<?	 string-ci>?
+									 get-secondary-key   		string-ci=? string-ci<?	 string-ci>? ))
 									 
-    (cons 'primary_amount    (vector get-primary-key     string-ci=? string-ci<?	 string-ci>?
-									 get-split-value-num     =           <      	     >       ))
+    (cons 'primary_amount    (vector get-primary-key     		string-ci=? string-ci<?	 string-ci>?
+									 get-array-value-num-base     =           <      	     >       ))
 									 
-    (cons 'amount_secondary  (vector get-split-value-num     =           <      	     >       
- 									 get-secondary-key   string-ci=? string-ci<?	 string-ci>?))
+    (cons 'amount_secondary  (vector get-array-value-num-base     =           <      	     >       
+ 									 get-secondary-key   		string-ci=? string-ci<?	 string-ci>?))
 									 
-    (cons 'amount_amount     (vector get-split-value-num     =           <      	     >       
-									 get-split-value-num     =           <      	     >       )))
+    (cons 'amount_amount     (vector get-array-value-num-base     =           <      	     >       
+									 get-array-value-num-base     =           <      	     >       )))
 )
 
 (define (comp-sort-helper sort-option-value col-index)
@@ -2803,14 +2802,22 @@ Credit Card, and Income accounts.")))))
 	)
   )
  
-(define (store-period-values column list_of_trans scale-op-val  scale-num-val  )
+  (let* ((document (gnc:make-html-document)) 
+	(c_account_1 (opt-val pagename-accounts "Accounts"))
+	(c_account_2 (opt-val pagename-accounts "Filter By..."))
+	(filter-mode (opt-val pagename-accounts "Filter Type"))
+	(report-title (opt-val 
+                       pagename-general
+                       gnc:optname-reportname)))
+
+ 
+(define (store-period-values column list_of_trans scaling-mul-val scaling-div-val)
 ;; transfers results for a single period from hash table into a column in the amounts-array along with 
 ;; storing the guid in the same array location in the guid-array.  Entries are put on the same row as
 ;; the description or account name from earlier periods by using the hash table pointer-hash
 ;;  new names are added to the hash table and added at the bottom of the array
-	(let (
-	(scale-num-numeric   (gnc:make-gnc-numeric (inexact->exact (* 100 scale-num-val)) 100)))
 
+(if  (not (null? splits))
 (for-each 
 	(lambda (split-trans)
 		(let* (		
@@ -2819,11 +2826,18 @@ Credit Card, and Income accounts.")))))
 	
 		(report-currency (hash-ref currency-lookup-hash (get-currency-type split-trans)))
 		(currency-frac (gnc-commodity-get-fraction report-currency))	
+		(value
+			(if (= 1 scaling-mul-val)
+				(get-split-value-numer split-trans)
+				(gnc-numeric-mul 
+					(gnc:make-gnc-numeric (inexact->exact (* 100 scaling-mul-val)) 100) 
+							(get-split-value-numer split-trans)  currency-frac GNC-RND-ROUND)))
 		(split-value (gnc:make-gnc-monetary report-currency 
-			(if (= 1 scale-num-val)
-			(get-split-value split-trans)
-			((vector-ref (cdr (assq scale-op-val  scale-num)) 0)
-							(get-split-value split-trans) scale-num-numeric currency-frac GNC-RND-ROUND))))
+			(if (= 1 scaling-div-val)
+				value
+			(gnc-numeric-div value 
+				(gnc:make-gnc-numeric (inexact->exact (* 100 scaling-div-val)) 100)
+					  currency-frac GNC-RND-ROUND))))
 		(split-value-coll (if (get-reverse-sign? split-trans)
 			    (gnc:make-gnc-monetary report-currency (gnc-numeric-neg (gnc:gnc-monetary-amount split-value)))
 			    split-value))
@@ -2842,7 +2856,8 @@ Credit Card, and Income accounts.")))))
 		  ))
 		))
 		list_of_trans
-)))
+))
+)
 
 
 (define (get-periods-results begin-date end-date)
@@ -2850,11 +2865,7 @@ Credit Card, and Income accounts.")))))
 ;; converted to a define statement.  It
 ;; queries gnucash then stores the results in hash table by calling get-the-transactions
 ;; the store-period-values routine will then transfer this periods results to a columnn an array
-  (let* (;(document (gnc:make-html-document)) ;ends at 3267 dbd
-	(c_account_1 (opt-val pagename-accounts "Accounts"))
-	(c_account_2 (opt-val pagename-accounts "Filter By..."))
-	(filter-mode (opt-val pagename-accounts "Filter Type"))
-
+  (let* (
     (primary-key (opt-val pagename-sorting optname-prime-sortkey))
     (primary-order (opt-val pagename-sorting "Primary Sort Order"))
     (secondary-key (opt-val pagename-sorting optname-sec-sortkey))
@@ -2871,7 +2882,7 @@ Credit Card, and Income accounts.")))))
 
     ;;(gnc:warn "accts in trep-renderer:" c_account_1)
     ;;(gnc:warn "Report Account names:" (get-other-account-names c_account_1))
-
+	
     (if (not (or (null? c_account_1) (and-map not c_account_1)))
         (begin
           (qof-query-set-book query (gnc-get-current-book))
@@ -2978,11 +2989,9 @@ Credit Card, and Income accounts.")))))
 
 
 	(gnc:report-starting reportname)
-	(let* ((document (gnc:make-html-document))
-				(c_account_1 (opt-val pagename-accounts "Accounts"))
-	(c_account_2 (opt-val pagename-accounts "Filter By..."))
-	(filter-mode (opt-val pagename-accounts "Filter Type"))
-
+(if (not (or (null? c_account_1) (and-map not c_account_1)))
+        (begin
+	(let* (
 	;; step 4 of 4 needed for gnctimeperiod-utilities
 ;; the let needs to be a let*
 ;; may need to change op-value to get-option  
@@ -3027,7 +3036,7 @@ Credit Card, and Income accounts.")))))
   ;                 (opt-val pagename-general "End Date"))))
  
 ; for comparison period
-		(compare? (opt-val pagename-compare optname-compare?))
+		
 		(deltas-val (opt-val pagename-compare text-compare-divide))
 		(whichperiod-val2 (opt-val pagename-compare text-whichcompareperiod))
 	
@@ -3060,9 +3069,7 @@ Credit Card, and Income accounts.")))))
 							(list begindate2 enddate2 deltas-val)))
  
 ;; end for comparison period  
-        (report-title (opt-val 
-                       pagename-general
-                       gnc:optname-reportname))
+  
         (primary-key (opt-val pagename-sorting optname-prime-sortkey))
         (primary-order (opt-val pagename-sorting "Primary Sort Order"))
         (secondary-key (opt-val pagename-sorting optname-sec-sortkey))
@@ -3072,6 +3079,11 @@ Credit Card, and Income accounts.")))))
 		(primary-comp-key  (cdr (assq primary-key  sort-key-number  )))
 		(secondary-comp-key  (cdr (assq secondary-key  sort-key-number  )))
 		(consolidate-case-sensitive? (opt-val pagename-display optname-consolidate-case-sensitive))
+
+;for compare
+	(compare? (opt-val pagename-compare optname-compare?))
+	(base?  (not (opt-val pagename-compare optname-no-base?)))
+	;(compare-scale-to-num   (gnc:make-gnc-numeric (inexact->exact (* 100 compare-scale-to-val)) 100))
 		   
 		)
 
@@ -3092,12 +3104,17 @@ Credit Card, and Income accounts.")))))
 ;;for scaling
 	(set! scale-op-val 	 (opt-val the_tab "Scale Results"))
 	(set! scale-num-val  (opt-val the_tab "Scale Number Option"))
-	(set! scale-num-numeric   (gnc:make-gnc-numeric (inexact->exact (* 100 scale-num-val)) 100))
+	
 	
 ;; for compare period scaling
 	(set! scale-op-val2 	 (opt-val pagename-compare "Scale Results"))
 	(set! scale-num-val2  (opt-val pagename-compare "Scale Number Option"))
-	(set! scale-num-numeric2   (gnc:make-gnc-numeric (inexact->exact (* 100 scale-num-val2)) 100))
+	
+	(set! compare-scale-automatically? (opt-val pagename-compare optname-scale-automatically?))
+	(set! compare-scale-to-val 		(opt-val pagename-compare optname-scale-to))
+	(set! scaled? (if (or (not (= 1 scale-num-val)) (not (= 1 scale-num-val2)) compare-scale-automatically?)
+					#t
+					#f))
 
 	 ;; for find option
 	 ;for find 
@@ -3116,6 +3133,7 @@ Credit Card, and Income accounts.")))))
 	(set! use-old-running-balance? (opt-val pagename-display "Use old running balance"));;dbd remove
 	(set! description-titlecase? (opt-val pagename-display optname-descript-titlecase))
 	(set! do-find? (or find-text? find-min? find-max?)	)
+	(set! do-findamount? (or find-min? find-max?))
 	(set! findtitle "")
 	(if (or find-text? find-min? find-max?)
 		(let* (	 (report-currency (if comm-curr?
@@ -3154,8 +3172,8 @@ Credit Card, and Income accounts.")))))
 		)))
 
 	(set! pointer-hash (make-hash-table))
-	(set! amounts-array (make-array (gnc:html-make-empty-cell) 2000 15))
-	(set! guid-array (make-array #f 2000 15))
+	(set! amounts-array (make-array (gnc:html-make-empty-cell) 3000 415))
+	(set! guid-array (make-array #f 3000 415))
 	(set! row-number 2) ; row 0 heading         row 1 number of days in the period
 	(set! column 1)
 	(set! period-number 1)
@@ -3169,67 +3187,95 @@ Credit Card, and Income accounts.")))))
 	 ;get transactions for the specified period	
 	 
 	 (get-periods-results begindate enddate); get base periods transactions - results stored in list_of_trans and 2 arrays
-	 (if (> (length list_of_trans)  1)
-		(set! amounts-array (make-array (gnc-numeric-zero) (+ (length list_of_trans) 2000) (+ (length list-of-periods) 15)))
-		(set! guid-array (make-array #f (+ (length list_of_trans) 2000) (+ (length list-of-periods) 15))))
+	 (if (not (null? list_of_trans))
+		(set! amounts-array (make-array (gnc-numeric-zero) (+ (length list_of_trans) 2000) (+ (length list-of-periods) 415)))
+		(set! guid-array (make-array #f (+ (length list_of_trans) 2000) (+ (length list-of-periods) 415))))
 	 (array-set! amounts-array ;store time period title
-		(display-date-interval begindate enddate) 
+		(display-date-interval-columns begindate enddate) 
 			0 column)
-	 (array-set! amounts-array (caddr (car list-base-period)) 1 column)	; store number of days		
-	 (store-period-values column list_of_trans scale-op-val  scale-num-val) 
+	 (array-set! amounts-array (caddr (car list-base-period)) 1 column)	; store number of days
+	 (let (
+		(scaling-mul-val
+			(if compare-scale-automatically?
+				compare-scale-to-val
+				(if (eq? scale-op-val '* )
+					scale-num-val
+					1)))
+		(scaling-div-val (if compare-scale-automatically?
+			(caddr (car list-base-period))
+			(if (eq? scale-op-val '/ )
+					scale-num-val
+					1)))
+		)
+	 (if base?
+		(store-period-values column list_of_trans scaling-mul-val scaling-div-val)
+		(set! column 0))
+	 )
 ;; compare period is divided up into smaller parts based on users selection
 ;;  for loop reads in and stores as column in array each small period
-	(for-each 
+	(if  compare?
+		(for-each 
 			(lambda (dates)
 			(let (
 				(date-start (car dates))
 				(date-end (cadr dates))
+				(scaling-mul-val
+					(if compare-scale-automatically?
+						compare-scale-to-val
+							(if (eq? scale-op-val2 '* )
+								scale-num-val2
+								1)))
+				(scaling-div-val (if compare-scale-automatically?
+					(caddr dates)
+					(if (eq? scale-op-val2 '/ )
+						scale-num-val2
+						1)))
 				)
 				(get-periods-results date-start date-end)
 				(set! column (+ column 1))
 				(array-set! amounts-array
-					(display-date-interval date-start date-end) ;store time period title
+					(display-date-interval-columns date-start date-end) ;store time period title
 						0 column)
 				(array-set! amounts-array (caddr dates) 1 column) ;store number of days
-				(store-period-values column list_of_trans scale-op-val2  scale-num-val2)
+				(store-period-values column list_of_trans scaling-mul-val scaling-div-val)
 			))
 	 list-of-periods)
+	 )
 	
-
+(if (not (= row-number 2)) ;if row number is greater than 2 then some entries were found 
  (let (
 	;; pointer-hash contains all of the transactions and what row in the array they are stored in
 	;; convert to list named list-thekeys ;;fix me need to sort while creating list
 	 (list-thekeys (hash-map->list cons pointer-hash)))
 		
 	 ; if only two periods, calculate delta
-	 (if (< column 3)
+	 (if (= column 2)
 		(begin
 			(calculate-delta list-thekeys)
 			(set! column 3)
 		)
 	 )
 	 
-	; (let* (
-	;					
-	;	; sort based on primary and secondary keys
-	;	(sort-type (get-sort-type primary-key secondary-key))		
-	;	(var-p (comp-sort-helper sort-type 0))
-	;	(comp-p1 (comp-sort-helper sort-type 1))
-	;	(comp-p2 (if (equal? primary-order 'ascend)
-	;					(comp-sort-helper sort-type 2)
-	;					(comp-sort-helper sort-type 3)
-	;					))
-	;	(var-s (comp-sort-helper sort-type 4))	
-	;	(comp-s1 (comp-sort-helper sort-type 5))
-	;	(comp-s2 (if (equal? secondary-order 'ascend)
-	;				(comp-sort-helper sort-type 6)
-	;					(comp-sort-helper sort-type 7)
-	;					))
-	 ;		)	
-	; (set! list_of_trans (sortpayees payee-hash var-p var-s comp-p1 comp-p2 comp-s1 comp-s2))
-	;	 ;for find for composite min and max amounts
-	;    (set! list_of_trans (filtersplitscomp-found list_of_trans ))
-	;	)
+	 (let* (
+						
+		; sort based on primary and secondary keys
+		(sort-type (get-sort-type primary-key secondary-key))		
+		(var-p (comp-sort-helper sort-type 0))
+		(comp-p1 (comp-sort-helper sort-type 1))
+		(comp-p2 (if (equal? primary-order 'ascend)
+						(comp-sort-helper sort-type 2)
+						(comp-sort-helper sort-type 3)
+						))
+		(var-s (comp-sort-helper sort-type 4))	
+		(comp-s1 (comp-sort-helper sort-type 5))
+		(comp-s2 (if (equal? secondary-order 'ascend)
+					(comp-sort-helper sort-type 6)
+						(comp-sort-helper sort-type 7)
+						))
+	 		)
+		(set! list_of_trans  list_of_trans)
+	 (set! list-thekeys (sortkeys list-thekeys var-p var-s comp-p1 comp-p2 comp-s1 comp-s2))
+		)
 	 
 	 
 	 
@@ -3272,12 +3318,12 @@ Credit Card, and Income accounts.")))))
                   (gnc:html-markup-h3 
                    (display-date-interval begindate enddate))))
 				   
-				(if (not (= 1 scale-num-val)) ; for scaling 
+				(if scaled? ; for scaling 
 				(gnc:html-document-add-object! 
                  document
                  (gnc:make-html-text
                   (gnc:html-markup-h2 
-                   (string-append scaling-text " " (vector-ref (cdr (assq scale-op-val  scale-num)) 1) (number->string scale-num-val)))))
+                   (string-append scaling-text " "  ))))
 				)
 				 
 ;;
@@ -3285,12 +3331,12 @@ Credit Card, and Income accounts.")))))
   ;;optional section for troubeshooting gnctimeperiod-utilities
 	;; change to (equal? 1 1) to see variables
 	;;       use (equal? 1 "a") to hide variables
-	(if (equal? 1 1) ;; 
+	(if (equal? 1 "a") ;; 
 	(begin
 		(set! period-val " ")
 	  (let* (	   
-	 ;  (list_of_trans (sortpayees payee-hash sort-type))
-	  (numtransact (length list_of_trans ))
+
+	  (numtransact (length list-thekeys ))
 
 	   (count 0)
 	   )
@@ -3306,28 +3352,31 @@ Credit Card, and Income accounts.")))))
 					"match"
 					"no_match"))
 		
-			(current-trans 	(list-ref list_of_trans count ))
+			(current-trans 	(list-ref list-thekeys count ))
 			(next-one (if (< count (- numtransact 1 ))
-						(list-ref list_of_trans (+ count 1))
+						(list-ref list-thekeys (+ count 1))
 						current-trans))
 	
-			(thekey (car (list-ref list_of_trans count ) ))
+			(thekey (car (list-ref list-thekeys count ) ))
 			(namcode (get-namecode current-trans))
 			(othernam (get-other-name current-trans))
 			(description (get-description current-trans))
+			(amount (get-array-value-num-base current-trans)) ;;dbd dbd
+		;	(amount (get-row-in-array current-trans))
+			(amou (cdr current-trans))
 							
-			(accountguid (get-accountguid 4)) ;dbd fix
+			(accountguid (get-accountguid current-trans)) ;dbd fix
 			
-			(tp (get-date-tp current-trans))
+	;		(tp (get-date-tp current-trans))
 			
 			
 			
 		; (comp-timepair-same-year tp-a tp-b)
-			(wellm (if (comp-timepair-same-week (get-date-tp current-trans)  (get-date-tp next-one))
-					"match"
-					"no"))
-			(currencyz (gnc-default-currency))
-			(currency-frac (gnc-commodity-get-fraction currencyz))
+	;		(wellm (if (comp-timepair-same-week (get-date-tp current-trans)  (get-date-tp next-one))
+	;				"match"
+	;				"no"))
+	;		(currencyz (gnc-default-currency))
+	;		(currency-frac (gnc-commodity-get-fraction currencyz))
 			)
 		
 		 (set! period-val (string-append period-val 
@@ -3339,21 +3388,25 @@ Credit Card, and Income accounts.")))))
 		"guid:"
 			accountguid
 			"date:"
-			(strftime "%Y%m%d" (get-date-tm current-trans))
+	;		(strftime "%Y%m%d" (get-date-tm current-trans))
 			" "
 			well
 			"Prim:"
 			(get-primary-key current-trans)
 			"Sec:"
 			(get-secondary-key current-trans)
+			"row"
+			(number->string amount) ;dbd dbd
+			"row1"
+			(number->string amou) ;dbd dbd
 			"namcod"
 			namcode
 			" "
 			othernam
 			"descrip"
 			description
-			"currency type"
-			(get-currency-type current-trans)
+	;		"currency type"
+	;		(get-currency-type current-trans)
 			"the_key"
 		     thekey
 			" "
@@ -3386,11 +3439,6 @@ Credit Card, and Income accounts.")))))
    ;       (_ "Number of items in the list is %s.") 
    ;       (gnc:html-markup-b (number->string   (comp-sort-helper 'primary_secondary 8)) )))
 	    
-		  
-	;	(gnc:html-markup-p
-   ;      (gnc:html-markup/format
-   ;       (_ "from the sorted list entry 0  is %s.") 
-   ;       (gnc:html-markup-b (car (list-ref (sortpayees payee-hash 1) 0)))))
 		
 		(gnc:html-markup-p
          (gnc:html-markup/format
@@ -3428,7 +3476,7 @@ Credit Card, and Income accounts.")))))
           (_ "The number option formatted as currency is %s.")
           (gnc:html-markup-b
            (xaccPrintAmount
-            scale-num-numeric
+            (gnc:make-gnc-numeric (inexact->exact (* 100 scale-num-val)) 100)
             (gnc-default-print-info #f)))))
 		  
 		  (gnc:html-markup-p
@@ -3524,8 +3572,10 @@ Credit Card, and Income accounts.")))))
 ;end for showing imbalance	
 				
 				
-				))
+				))))
               ;; error condition: no splits found
+;(if  (not (or (null? c_account_1) (and-map not c_account_1)))
+ ;       (begin    
               (let ((p (gnc:make-html-text)))
                 (gnc:html-text-append! 
                  p 
@@ -3533,34 +3583,23 @@ Credit Card, and Income accounts.")))))
                   (_ "No matching transactions found"))
                  (gnc:html-markup-p
                   (_ "No transactions were found that \
-match the time interval and account selection specified \
-in the Options panel.")))
-                (gnc:html-document-add-object! document p))))
-
-        ;; error condition: no accounts specified or no transactions found
- (if (not (or (null? c_account_1) (and-map not c_account_1)))
-	;; error condition: no splits found
-              (let ((p (gnc:make-html-text)))
-                (gnc:html-text-append! 
-                 p 
-                 (gnc:html-markup-h2 
-                  (_ "No matching transactions found"))
-                 (gnc:html-markup-p
-                  (_ "No transactions were found that \
-match the time interval, account selection specified, \
+match the time interval and account selection specified, \
 and find requirements \
 in the Options panel.")))
                 (gnc:html-document-add-object! document p))
+;	))
+)))
+
 
         ;; error condition: no accounts specified
-        
+    
         (gnc:html-document-add-object!
          document 
 	 (gnc:html-make-no-account-warning 
-	  report-title (gnc:report-id report-obj))))
+	  report-title (gnc:report-id report-obj))
+	  ))
     (gnc:report-finished)
     document)
-	
 	)
 
 ;; Define the report.

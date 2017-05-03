@@ -3286,14 +3286,6 @@ Credit Card, and Income accounts.")))))
                 (array-set! amounts-array
                     (display-date-interval-columns date-start date-end) ;store time period title
                         0 last-column)
-                (if (eq? deltas-val 'days)
-                    (let (
-                        (date-start-dt (gnc:timepair->date (car dates))))
-                        (set-tm:sec date-start-dt 59)
-                        (set-tm:min date-start-dt 59)
-                        (set-tm:hour date-start-dt 23)
-                        (set! date-start-dt (gnc:decrement-date date-start-dt 1))
-                        (set! date-start (gnc:date->timepair date-start-dt))))
                 (get-periods-results  date-start date-end)
                 (array-set! amounts-array (caddr dates) 1 last-column) ;store number of days
                 (store-period-values last-column list_of_trans scaling-mul-val scaling-div-val)

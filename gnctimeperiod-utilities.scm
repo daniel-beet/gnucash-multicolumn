@@ -494,11 +494,11 @@
     ))
 
 (define (gnc:days-total date)
-;; 0- Sun  6-Sat
-  (let (
-      (yr (-(+ (tm:year date) 1900) 1)))
-     (+ (- (quotient yr 4)(quotient yr 100)) (quotient yr 400) yr (gnc:day-of-year date))
-    ))
+  (let ((the-date date ) )
+  (set-tm:hour the-date 12)
+  (quotient (gnc-mktime the-date)  (* 60 60 24)))
+
+ )
 
  (define (gnc:decrement-date date decrement)
 ;;
@@ -935,7 +935,8 @@
         (date-end  (gnc:timepair->date (gnc:timepair-end-day-time (cadr userpicks))))
         )
     (define (addto-periods! date-start date-end)
-        (let ( (element (list (gnc:date->timepair date-start) (gnc:date->timepair date-end)
+        (let ( (element (list (gnc:timepair-start-day-time (gnc:date->timepair date-start))
+               (gnc:timepair-end-day-time (gnc:date->timepair date-end))
                (+ (gnc:delta-days date-start date-end) 1)) ))
                 (addto! periods element))
         )

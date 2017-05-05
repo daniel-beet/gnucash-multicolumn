@@ -32,7 +32,7 @@
    #:export (gnc:getdates  gnc:getdatedelta gnc:list-years gnc:list-periods
              gnc:list-lasts gnc:list-months gnc:list-operands gnc:list-comparechoices gnc:increment-date
              gnc:daysinmonth gnc:dayofweek gnc:day-of-year gnc:set_yday gnc:day-of-week gnc:decrement-date
-             ))
+             gnc:increment-month gnc:increment-month-less-1-day gnc:decrement-month ))
 (use-modules (gnucash gettext))
 
 (use-modules (gnucash gnc-module))

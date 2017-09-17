@@ -29,12 +29,11 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; potential items to-do?
-; 1. create delta table col1 = base col2 on = delta (base - period)
 
 
 (define-module (gnucash report standard-reports comparison-transactions))
 
+;;following line needed to print in trace file use:  (gnc:warn "disp current-col is" current-col) see in C:\Users\USERNAME\AppData\Local\Temp
 (use-modules (gnucash main)) ;; FIXME: delete after we finish modularizing.
 (use-modules (srfi srfi-1))
 (use-modules (gnucash gnc-module))
@@ -50,6 +49,9 @@
 ;; since gnc:register-guid is not being exported in  report-system.scm for html-utilities.scm
 (gnc:module-load "gnucash/html" 0)
 
+;; following neded for gnc-locale-to-utf8
+(use-modules (gnucash core-utils))
+
 (gnc:module-load "gnucash/report/report-system" 0)
 
 (define-macro (addto! alist element)
@@ -58,6 +60,7 @@
 ;; Define the strings here to avoid typos and make changes easier.
 (define reportname (N_ "Comparison-Transactions Report"))
 (define pagename-accounts (N_ "Accounts"))
+(define pagename-base (N_ "Base"))
 (define pagename-sorting (N_ "Sorting"))
 (define pagename-general (N_ "General"))
 (define pagename-display (N_ "Display"))
@@ -89,12 +92,23 @@
 
 (define optname-days (N_ "Days"))
 
-(define text-containing ", containing " )
+(define optname-show-assets (N_ "Show Assets"))
+(define optname-show-assets-help (N_ "Show Assets"))
+(define optname-show-liabilities (N_ "Show Liabilities"))
+(define optname-show-liabilities-help (N_ "Show Liabilities"))
+(define optname-show-income (N_ "Show Income"))
+(define optname-show-income-help (N_ "Show Income"))
+(define optname-show-expenses (N_ "Show Expenses"))
+(define optname-show-expenses-help (N_ "Show Expenses"))
+(define optname-show-equities (N_ "Show Equities"))
+(define optname-show-equities-help (N_ "Show Equities"))
+
+(define text-containing " containing " )
 (define text-and " and ")
 (define text-or " or ")
 (define text-but-not " but not ")
-(define text-minimum ", Minimum ")
-(define text-maximum ", Maximum ")
+(define text-minimum " Minimum ")
+(define text-maximum " Maximum ")
 
 ;; added for consolidating
 (define consolidated-text "Consolidated")
@@ -106,11 +120,16 @@
 ;; add for scaling
 (define scaling-text "Note: amount and balance have been scaled.")
 
+(define optname-show-average (N_ "Show average"))
+(define opthelp-show-average (N_ "Display a column for the average of the historic values."))
+(define optname-show-totalcol (N_ "Show Column with Totals"))
+(define opthelp-show-totalcol (N_ "Display a column with the row totals."))
+
 ;; added for flagging imbalances when account name is primary key
 (define optname-show-imbalance
   (N_ "Note any imbalance"))
 (define opthelp-show-imbalance
-  (N_ "Make a footnote if there is an imbalance when account name or account code is selected as the primary key and find not used"))
+  (N_ "Make a footnote if there is an imbalance and find not used"))
 
 (define text-note-account " Note - account   ")
 (define text-changed-in-value " in the base period  changed in value by ")
@@ -192,18 +211,31 @@
 ;; can change following text for local language
 
 ;; following value may need to be changed
-(define the_tab pagename-general)
+(define the_tab pagename-base)
 
-(define text-whichperiod "Select Period")
+(define text-whichperiod "Select Time Period")
 (define text-customdates "Custom Dates")
-(define custom-from-date (N_ "Custom_Start Date"))
-(define custom-to-date (N_ "Custom_End Date"))
-(define text-pick-year "Year for Specified Pick")
-(define text-period "Specified Period")
-(define text-last "Specified Last")
-(define text-month "Specified Month")
+(define text-customdates-help "Choose the start and end dates using custom date and ignore the section labeled specified choices")
+(define custom-from-date (N_ "Custom Date - Start Date"))
+(define custom-to-date (N_ "Custom Date - End Date"))
+(define text-pick-year "Year for Specified Choices")
+(define text-pick-year-help "Pick the year for report - Not used for custom dates, only used for specified choices")
+(define text-period "Specified Choices - Period")
+(define text-period-help "Choose for time periods such as full year or second quarter or month-to-date")
+(define text-last "Specified Choices - Last")
+(define text-last-help "Choose for choices like last 3 months,  last 90 days, last month, last week ")
+(define text-month "Specified Choices - Month")
+(define text-month-help "choose for choices consisting of months of the year, note the month is considered to start on the day specified in edit/preferences/accountingPeriod")
+(define text-select-num "Select number comparison periods")
+(define text-select-num-help "Use Select Number of Comparison Periods to automatically create the comparison time periods")
+(define text-exclude-average "Do not include last period in creating periods")
+(define text-numbercompareperiods "Select Number of Comparison Periods")
+(define text-help-numcompareperiods "Number of periods - Selecting 3 will give 3 months if months was picked for divide periods  Remember you can select custom dates instead.")
+
 
 (define text-number-days "  Number of Days:")
+(define text-scaled-by  "  Scaled by:")
+(define text-scaled-to  "  Scaled to:")
 
 ; for compare
 (define pagename-compare (N_ "Compare"))
@@ -220,19 +252,42 @@
    (list (list->vector
              (list 'customdates
                    (N_ text-customdates)
-                   (N_ "use selected dates and ignore specific choices")))
+                   (N_ text-customdates-help)))
             (list->vector
              (list 'period
                    (N_ text-period)
-                   (N_ "which period to use")))
+                   (N_ text-period-help)))
             (list->vector
              (list 'last
                    (N_ text-last)
-                   (N_ "when to use")))
+                   (N_ text-last-help)))
             (list->vector
              (list 'month
                    (N_ text-month)
-                   (N_ "use specific month")))
+                   (N_ text-month-help)))
+           )
+)
+(define gnc:list-datechoices-comp
+   (list (list->vector
+             (list 'select-num
+                   (N_ text-select-num)
+                   (N_ text-select-num-help)))
+            (list->vector
+             (list 'customdates
+                   (N_ text-customdates)
+                   (N_ text-customdates-help)))
+            (list->vector
+             (list 'period
+                   (N_ text-period)
+                   (N_ text-period-help)))
+            (list->vector
+             (list 'last
+                   (N_ text-last)
+                   (N_ text-last-help)))
+            (list->vector
+             (list 'month
+                   (N_ text-month)
+                   (N_ text-month-help)))
            )
 )
     (define scale-num
@@ -243,7 +298,31 @@
 
 ;; end of section 2 needed for gnctimeperiod-utilities
 
+(define type-namelist (list
+                         "Assets"
+                         "Liabilities"
+                         "Income"
+                         "expense"
+                         "Equity"
+                         ))
 (define show-days? #t)
+
+(define show-average? #t)
+(define show-totalcol? #t)
+(define show-assets? #t)
+(define show-liabilities? #t)
+(define show-income? #t)
+(define show-expenses? #t)
+(define show-equities? #t)
+(define no-grand-total? #f)
+
+(define asset-accounts #f)
+(define liability-accounts #f)
+(define income-accounts #f)
+(define expense-accounts #f)
+(define equity-accounts #f)
+(define liability-accounts #f)
+(define previous-type #f)
 
 ;for find
 
@@ -279,8 +358,34 @@
 
 (define description-titlecase? #t)
 (define columns-headings 0)
+;remove these commented lines after other reports are converted to using markers
+;; for consolidate descriptions (create composite  - to combine multiple entries with same payee)
+;(define marker1 "#Yw;" ) ;all of the markers need to be 4 characters in length
+;(define marker2 "#Yx;" )
+;(define marker3 "#Yy;" )
+;(define marker4 "#Yz;" )
+;(define marker5 "#Zy;" )
+;(define marker6 "#Zx;" )
+;(define marker7 "#Zw;" )
+;(define marker8 "#Zv;" )
+;(define marker9 "#Zu;" )
+;(define markerA "#Yv;" )
+;(define markerB "#Vv;" )
 
 ;; for consolidate descriptions (create composite  - to combine multiple entries with same payee)
+(define marker1 (string #\# #\1 #\w #\backspace)) ;all of the markers need to be 4 characters in length
+(define marker2 (string #\# #\2 #\x #\backspace))
+(define marker3 (string #\# #\3 #\y #\backspace))
+(define marker4 (string #\# #\4 #\z #\backspace))
+(define marker5 (string #\# #\5 #\y #\backspace))
+(define marker6 (string #\# #\6 #\x #\backspace))
+(define marker7 (string #\# #\7 #\w #\backspace))
+(define marker8 (string #\# #\8 #\v #\backspace))
+(define marker9 (string #\# #\9 #\u #\backspace))
+(define markerA (string #\# #\A #\t #\backspace))
+(define markerB (string #\# #\B #\s #\backspace))
+
+
 (define curr " ")
 (define comm-curr? #f)
 (define currency-type-num 1)
@@ -295,6 +400,8 @@
 (define primary-subtotal-collector-hash (make-hash-table))
 (define secondary-subtotal-collector-hash (make-hash-table))
 (define total-collector-hash (make-hash-table))
+(define type-total-collector-hash (make-hash-table))
+(define total-current-type #f)
 
 (define (sort-test x y var-p var-s comp-p1 comp-p2 comp-s1 comp-s2  )
 
@@ -327,32 +434,36 @@
 (define last-column 1)
 (define period-number 0)
 
+(define acct-depth-name-list (make-list 10 #f))
+(define type-total-list (make-list 10 #f))
+(define type-root-acct-list (make-list 10 #f))
+
 
 
 ;; routine to sum up all descriptions with same payee and to store account guid and also non uppercase description
- (define (total-payee-hash-add! payee-hash payee amount payee-account-guid-hash guids+description )
+ (define (total-payee-hash-add! payee-hash payee amount payee-account-guid-hash guids+description+acct )
     (begin
           (hash-set! payee-hash payee  (gnc-numeric-add amount  (hash-ref payee-hash payee (gnc-numeric-zero))  GNC-DENOM-AUTO GNC-RND-ROUND))
-         (hash-set! payee-account-guid-hash payee guids+description )))
+         (hash-set! payee-account-guid-hash payee guids+description+acct )))
 
 (define (get-primary-key transaction)
     (let* (
     ;;
             (thekey (car transaction))
-            (endprimary (string-contains thekey "#Yw;"))
+            (endprimary (string-contains thekey marker1))
             (primary (if (< 0 endprimary)
                             (string-copy thekey 0 endprimary)
                     " ")) ;default
                     )
             primary
              )
-    )
+)
 
 (define (get-secondary-key transaction)
     (let* (
             (thekey (car transaction))
-            (startsecond (string-contains thekey "#Yw;"))
-            (endsecond (string-contains thekey "#Yx;"))
+            (startsecond (string-contains thekey marker1))
+            (endsecond (string-contains thekey marker2))
             (secondary (if  (< 4 (- endsecond startsecond))
                         (string-copy thekey (+ 4 startsecond) endsecond)
                         " " ));default
@@ -360,6 +471,7 @@
             secondary
             )
     )
+
 (define (get-date-key-tm the-key)
     (let* (
             (date (if  (< 7 (string-length the-key))
@@ -386,8 +498,8 @@
 (define (get-date-tm transaction)
     (let* (
             (thekey (car transaction))
-            (startdate (string-contains thekey "#Yx;"))
-            (enddate (string-contains thekey "#Yy;"))
+            (startdate (string-contains thekey marker2))
+            (enddate (string-contains thekey marker3))
             (date (if  (< 11 (- enddate startdate))
                     (string-copy thekey (+ 4 startdate) enddate)
                     "20000114" ;default date
@@ -410,7 +522,7 @@
 (define (get-currency-type transaction)
     (let* (
             (thekey (car transaction))
-            (startcurr (string-contains thekey "#Zu;"))
+            (startcurr (string-contains thekey marker9))
             (currency-type-str (if (< (+ startcurr 4) (string-length thekey))
                             (string-copy thekey (+ startcurr 4))
                             ;(string-take-right thekey (+ startcurr 4))
@@ -420,8 +532,8 @@
 (define (get-memo transaction)
     (let* (
             (thekey (car transaction))
-            (endmemo  (string-contains thekey "#Zv;"))
-            (startmem (string-contains thekey "#Zw;"))
+            (endmemo  (string-contains thekey marker8))
+            (startmem (string-contains thekey marker7))
             (memo (if  (< 4 (- endmemo startmem))
                         (string-copy thekey  (+ startmem 4) endmemo)
                         " ")))
@@ -431,8 +543,8 @@
 (define (get-reverse-sign? transaction)
     (let* (
             (thekey (car transaction))
-            (end  (string-contains thekey "#Zu;"))
-            (start (string-contains thekey "#Zv;"))
+            (end  (string-contains thekey marker9))
+            (start (string-contains thekey marker8))
             (rev-sign (if  (< 4 (- end start))
                         #t
                         #f)))
@@ -442,13 +554,27 @@
 (define (get-description transaction)
     (let* (
             (thekey (car transaction))
-            (startdescrip (string-contains thekey "#Yy;"))
-            (enddescrip (string-contains thekey "#Yz;"))
+            (startdescrip (string-contains thekey marker3))
+            (enddescrip (string-contains thekey marker4))
             (description (if  (< 4 (- enddescrip startdescrip))
                         (string-copy thekey (+ 4 startdescrip) enddescrip)
                         " ")))
             description)
     )
+(define (get-acct transaction)
+;; the account
+    (if transaction
+    (let* ( (row (get-row-in-array transaction))
+        (acct (cadddr (array-ref guid-array row 0))))
+        (if acct
+        acct
+        #f))
+    #f)
+        )
+(define (get-acctcode transaction)
+    (let* ( (acct   (get-acct transaction)))
+       (xaccAccountGetCode acct)
+        ))
 
 (define (get-description-verbatim row)
 ;; the actual description entered by user - removes problems with upper and lower case
@@ -460,8 +586,8 @@
 (define (get-namecode transaction)
     (let* (
             (thekey (car transaction))
-            (startnamcode (string-contains thekey "#Yz;"))
-            (endnamcode (string-contains thekey "#Zy;"))
+            (startnamcode (string-contains thekey marker4))
+            (endnamcode (string-contains thekey marker5))
             (namcode (if  (< 4 (- endnamcode startnamcode))
                         (string-copy thekey (+ 4 startnamcode) endnamcode)
                         " ")))
@@ -471,8 +597,8 @@
 (define (get-account-code transaction)
     (let* (
             (thekey (car transaction))
-            (startcod  (string-contains thekey "#Zy;"))
-            (endothercod (string-contains thekey "#Zx;"))
+            (startcod  (string-contains thekey marker5))
+            (endothercod (string-contains thekey marker6))
             (acctcod (if  (< 4 (- endothercod startcod))
                         (string-copy thekey  (+ startcod 4) endothercod)
                         " ")))
@@ -483,22 +609,65 @@
 (define (get-other-name transaction)
     (let* (
             (thekey (car transaction))
-            (endacctname  (string-contains thekey "#Zx;"))
-            (endothernam (string-contains thekey "#Zw;"))
+            (endacctname  (string-contains thekey marker6))
+            (endothernam (string-contains thekey marker7))
             (othernam (if  (< 4 (- endothernam endacctname))
                         (string-copy thekey  (+ endacctname 4) endothernam)
                         " ")))
             othernam)
     )
+(define (get-main-acct-type transaction)
+    (let* (
+        (acct (get-acct transaction))
+        (type 0)
+        (acct-list #f)
+        (found-type #f))
+    (if acct
+        (begin
+            (while (and (< type (length type-root-acct-list)) (not found-type))
+                (gnc:warn "type is now" type)
+                (set! acct-list (list-ref type-root-acct-list type))
+                (if (member acct acct-list)
+                    (set! found-type type))
+                (set! type (+ type 1))
+            )
+            found-type)
+        #f
+    )
+  ))
 
-(define (get-accountname-from-sort thekey transaction)
-    (let ((start-account (string-contains thekey "#Yv;")))
-        (if start-account
-            (if (< (+ 4 start-account) (string-length thekey) )
-                (string-append (get-account-code transaction)  (substring thekey (+ 4 (string-contains thekey "#Yv;"))))
-                " ")
-        thekey)
+(define (get-acct-depth to-depth acct)
+;; the account
+    (let* (
+        (depth (gnc-account-get-current-depth acct)))
+
+        (while (< to-depth depth)
+            (set! acct (gnc-account-get-parent acct) )
+            (set! depth (- depth 1))
+        )
+     acct
         ))
+(define (get-acct-trans-depth to-depth transaction); was a call to get-acctname-from-sort
+;; the account
+    (let* ( (thekey (car transaction))
+        (row (get-row-in-array transaction))
+        (acct (cadddr (array-ref guid-array row 0)))
+        )
+        (get-acct-depth to-depth acct)
+   ))
+ (define (get-acctname-trans-depth to-depth transaction)
+    (let* (
+           (acct (get-acct-trans-depth to-depth transaction)))
+        (xaccAccountGetName acct)
+  ))
+;(define (get-accountname-from-sort thekey transaction)
+;    (let ((start-account (string-contains thekey markerA)))
+;        (if start-account
+;            (if (< (+ 4 start-account) (string-length thekey) )
+;                (string-append (get-account-code transaction)  (substring thekey (+ 4 (string-contains thekey markerA))))
+;                " ")
+;        thekey)
+;        ))
 
 (define (get-accountguid transaction)
 ;; we stored (account-guid (gncAccountGetGUID account))
@@ -601,31 +770,137 @@
 ))
 ;; end for imbalance
 
+(define (getpos element lst)
+ ; (lambda (element lst)
+    (if (eqv? (list? (member element lst)) #t)
+        (- (length lst) (length (member element lst)))
+        #f
+        )
+)
+  ;; wrapper around gnc:html-table-append-ruler!
+(define (add-rule table num-cells)
+      (gnc:html-table-append-ruler!
+       table
+       num-cells)) ;;dbd fix me
+(define (pad n)
+  (if (> n 0)
+      (string-append "&nbsp;" (pad (- n 1)) )
+      "")
+)
+(define (make-tab n)
+  (if (> n 0)
+      (string-append "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" (make-tab (- n 1)))
+      "")
+)
+
+(define (indent-names table row-style transaction)
+    (let* ((header-row-contents '() )
+        (acct (get-acct transaction))
+        (parent (gnc-account-get-parent acct) )
+        (depth (gnc-account-get-current-depth acct))
+        (current-depth (gnc-account-get-current-depth acct))
+        )
+
+    (list-set! acct-depth-name-list depth acct)
+    (set! depth (- depth 1))
+    (while (and (< 0 depth)
+                (not (equal? parent (list-ref acct-depth-name-list depth))))
+        (list-set! acct-depth-name-list depth parent )
+        (set! parent (gnc-account-get-parent parent) )
+        (set! depth (- depth 1))
+    )
+    ;; we matched parent names at this level so difference starts at next level
+    (set! depth (+ depth 1))
+    (if (= depth 1)
+        (begin
+            (add-rule table (+ last-column columns-headings
+                            (if #f 1 0)))
+            (gnc:html-table-append-row/markup! table def:grand-total-style ;row-style
+                (gnc:make-html-text
+                  (gnc:html-markup-h3
+             (string-append  (xaccAccountGetName (list-ref acct-depth-name-list depth))
+                           (pad (- 25 (string-length (xaccAccountGetName (list-ref acct-depth-name-list depth)))))) )))
+            (set! depth (+ depth 1))
+        )
+    )
+    (while (< depth current-depth)
+        (if (= depth 2)
+            (gnc:html-table-append-row/markup! table row-style
+                (gnc:make-html-text
+                    (gnc:html-markup-b (string-append (make-tab (- depth 2))
+                        (xaccAccountGetName (list-ref acct-depth-name-list depth))))))
+
+            (gnc:html-table-append-row/markup! table row-style
+                (string-append (make-tab (- depth 2))   (xaccAccountGetName (list-ref acct-depth-name-list depth))))
+        )
+        (set! depth (+ depth 1))
+    )
+
+   (if (= depth 2)
+        (begin
+            (gnc:make-html-text
+                (gnc:html-markup-b (xaccAccountGetName acct)))
+        )
+        (string-append (make-tab (- depth 2))  (xaccAccountGetName acct))
+    )
+  )
+)
+
 
 ;; for consolidating
-(define (sortkeys list-thekeys var-p var-s comp-p1 comp-p2 comp-s1 comp-s2)(sort list-thekeys
+(define (sortkeys list-thekeys var-p var-s comp-p1 comp-p2 comp-s1 comp-s2 primary-key secondary-key acct-ascend accounts)
             ;1 sort by primary key and secondary key
             ;2 sort by primary key and amount
             ;3 sort by amount and secondary key
             ;4 sort by amount and amount
         ; will do 3rd sort on description
 
-
-     (lambda (x y)
-            (let (  (primary-x  (var-p x))
-                (primary-y  (var-p y))
-                (secondary-x  (var-s x))
-                (secondary-y  (var-s y)) )
-                (if (not (comp-p1 primary-x primary-y ))
-                    (comp-p2 primary-x primary-y)
-                    (if (not (comp-s1 secondary-x secondary-y))
-                        (comp-s2 secondary-x secondary-y )
-                        (string-ci<=? (get-description x) (get-description y)))
-                ))
-        )
-
-    ))
-
+        (if (equal? acct-ascend "Prime")
+                    (sort list-thekeys
+                            (lambda (x y)
+                                (let (  (primary-x  (getpos (get-acct x) accounts))
+                                        (primary-y  (getpos (get-acct y) accounts))
+                                        (secondary-x  (var-s x))
+                                        (secondary-y  (var-s y)) )
+                                (if (not (= primary-x primary-y ))
+                                    (< primary-x primary-y)
+                                    (if (not (comp-s1 secondary-x secondary-y))
+                                        (comp-s2 secondary-x secondary-y )
+                                        (string-ci<=? (get-description x) (get-description y)))
+                                ))
+                            )
+                      )
+          (if (equal? acct-ascend "Second")
+                    (sort list-thekeys
+                            (lambda (x y)
+                                (let (  (primary-x  (var-p x))
+                                        (primary-y  (var-p y))
+                                        (secondary-x (getpos (get-acct x) accounts))
+                                        (secondary-y  (getpos (get-acct y) accounts)))
+                                (if (not (comp-p1 primary-x primary-y ))
+                                    (comp-p2 primary-x primary-y)
+                                    (if (not (= secondary-x secondary-y))
+                                        (< secondary-x secondary-y )
+                                        (string-ci<=? (get-description x) (get-description y)))
+                                ))
+                            )
+                      )
+                    (sort list-thekeys
+                            (lambda (x y)
+                                (let (  (primary-x  (var-p x))
+                                        (primary-y  (var-p y))
+                                        (secondary-x  (var-s x))
+                                        (secondary-y  (var-s y)) )
+                                    (if (not (comp-p1 primary-x primary-y ))
+                                        (comp-p2 primary-x primary-y)
+                                        (if (not (comp-s1 secondary-x secondary-y))
+                                            (comp-s2 secondary-x secondary-y )
+                                            (string-ci<=? (get-description x) (get-description y)))
+                                ))
+                            )
+                    )
+        ))
+)
 ;; The option-values of the sorting key multichoice option, for
 ;; which a subtotal should be enabled.
 (define comp-subtotal-enabled '(account-name
@@ -700,33 +975,16 @@
      subheading-style
      (list heading-cell))))
 
-;; display an account name depending on the options the user has set
-(define (comp-account-namestring account show-account-code show-account-name show-account-full-name)
-  ;;# on multi-line splits we can get an empty ('()) account
-  (if (null? account)
-        (_ "Split Transaction")
-        (string-append
-           ;; display account code?
-           (if show-account-code
-                 (string-append (xaccAccountGetCode account) " ")
-                 "")
-           ;; display account name?
-           (if show-account-name
-                 ;; display full account name?
-                 (if show-account-full-name
-                      (gnc-account-get-full-name account)
-                      (xaccAccountGetName account))
-                 ""))))
-
 ;; render an account subheading - column-vector determines what is displayed
 (define (comp-render-account-subheading
          split-trans the-key table width subheading-style column-vector)
-  (let ((accountname  (get-accountname-from-sort the-key split-trans)))
+  (let ((accountname  (get-acctname-trans-depth 2 split-trans)))
+  (if (not no-grand-total?)
     (comp-add-subheading-row (gnc:make-html-text
                          (gnc:html-markup-anchor
                            (get-gnc:account-anchor-text split-trans)
                            accountname) )
-                        table width subheading-style)))
+                        table width subheading-style))))
 
 (define (comp-render-corresponding-account-subheading
          split-trans the-key table width subheading-style column-vector)
@@ -790,7 +1048,7 @@
            (addto! row-contents
                 (gnc:make-html-table-cell/markup
                                 "total-number-cell" (hash-ref subtotal-collector-hash
-                                (string-append (number->string col) "#Vv;" (number->string the-currency))
+                                (string-append (number->string col) markerB (number->string the-currency))
                                 (gnc:make-gnc-monetary currency (gnc-numeric-zero)))))
         (set! col (+ col 1))
         )
@@ -801,14 +1059,78 @@
     (set! row-contents '()))
     ))
 
+(define (comp-add-subtotal-row-account table width subtotal-string subtotal-collector subtotal-collector-hash
+                          subtotal-style export?)
+  (let ((currency-totals (subtotal-collector
+                          'format gnc:make-gnc-monetary #f))
+        (blanks (gnc:make-html-table-cell/size 1 (- width 1) #f))
+        (row-contents '())
+        (value #f)
+        (cell #f)
+        (the-currency 1))
+
+    (while (< the-currency currency-type-num)
+        (let ((currency (hash-ref currency-lookup-hash (number->string the-currency)))
+              (col 1)
+              (count-spaces 1))
+        (if (= the-currency 1)
+         (addto! row-contents
+                    (gnc:make-html-text
+                        (gnc:html-markup-b subtotal-string)))
+         (addto! row-contents
+                    (gnc:make-html-table-cell/markup "total-label-cell" " " )))
+        (set! count-spaces (+ count-spaces 1))
+        ; I can't figure out how to get blanks so brute force
+        (while (< count-spaces columns-headings )
+            (addto! row-contents
+                (gnc:make-html-table-cell/markup
+                    "total-number-cell"
+            " " ))
+            (set! count-spaces (+ 1 count-spaces))
+        )
+        (while (<= col last-column)
+            (addto! row-contents
+                (gnc:make-html-table-cell/markup
+                          "total-number-cell"
+                    (hash-ref subtotal-collector-hash
+                       (string-append (number->string col) markerB (number->string the-currency))
+                          (gnc:make-gnc-monetary currency (gnc-numeric-zero)))))
+       ;     (set! value (hash-ref subtotal-collector-hash
+       ;                 (string-append (number->string col) markerB (number->string the-currency))
+       ;                 (gnc:make-gnc-monetary currency (gnc-numeric-zero))))
+       ;    (set! cell
+       ;         (gnc:make-html-table-cell/markup
+       ;             "number-cell"  value
+       ;             ))
+        ;    (addto! row-contents
+        ;     (gnc:html-table-cell-set-style-internal!
+        ;       cell
+        ;            'attribute (list "align" "right")
+         ;          ; 'attribute '("align" "right")
+        ;           ; 'attribute '("valign" "top")
+        ;        )
+            (set! col (+ col 1))
+        )
+        (set! the-currency (+ the-currency 1))
+    )
+    (gnc:html-table-append-row/markup! table subtotal-style
+            (reverse row-contents))
+    (set! row-contents '()))
+    ))
 
 (define (comp-total-string str) (string-append (_ "Total For ") str))
 
 (define (comp-render-account-subtotal
           table width split the-key  total-collector total-collector-hash subtotal-style column-vector export?)
-    (comp-add-subtotal-row table width
-                      (total-string (get-accountname-from-sort the-key split))
-                      total-collector total-collector-hash subtotal-style export?))
+    (let* ( (row (get-row-in-array split))
+        (acct (cadddr (array-ref guid-array row 0)))
+        (depth (gnc-account-get-current-depth acct)))
+        (if (> depth 2)
+   ; (if no-grand-total?
+    (comp-add-subtotal-row-account table width
+                      (total-string (get-acctname-trans-depth 2 split))
+                      total-collector total-collector-hash subtotal-style export?)
+    )));)
 
 (define (comp-render-corresponding-account-subtotal
          table width split the-key  total-collector total-collector-hash subtotal-style column-vector export?)
@@ -1061,14 +1383,16 @@
 
 (define (make-heading-list column-vector options)
   (let ((heading-list '()))
+    (if (used-account-code column-vector)
+        (addto! heading-list (_ "Account Code")))
+   (if (used-account-name column-vector)
+        (addto! heading-list (_ "Account")))
     (if (used-description column-vector)
         (addto! heading-list (_ "Description")))
     (if (used-memo column-vector)
         (if (used-notes column-vector)
             (addto! heading-list (string-append (_ "Memo") "/" (_ "Notes")))
             (addto! heading-list (_ "Memo"))))
-    (if (or (used-account-name column-vector) (used-account-code column-vector))
-        (addto! heading-list (_ "Account")))
     (if (or (used-other-account-name column-vector) (used-other-account-code column-vector))
         (addto! heading-list (_ "Transfer from/to")))
     (if (used-shares column-vector)
@@ -1138,8 +1462,8 @@
             (gnc:make-html-text (gnc:html-markup-b
                 (if compare-scale-automatically?
 
-                    (_ "  Scaled to:")
-                    (_ "  Scaled by:")))))
+                    (_ text-scaled-to)
+                    (_ text-scaled-by)))))
         (while (< col columns-headings)
             (addto!  heading-list
                 (_ " "))
@@ -1196,6 +1520,11 @@
         (set! col (+ col 1)))
         ))
 
+    (if (used-account-code column-vector)
+        (addto! row-contents (get-acctcode split-trans)))
+    (if (used-account-name column-vector)
+       (addto! row-contents (indent-names table row-style split-trans)))
+
     (if (used-description column-vector)
         (addto! row-contents
                 (if transaction-row?
@@ -1210,8 +1539,6 @@
             (get-memo split-trans)
             ))
 
-    (if (or (used-account-name column-vector) (used-account-code column-vector))
-       (addto! row-contents (get-namecode split-trans)))
 
     (if (or (used-other-account-name column-vector) (used-other-account-code column-vector))
        (addto! row-contents (get-other-name split-trans)))
@@ -1271,13 +1598,13 @@
  ;; step 3 of 4 to add gnctimeperiod-utilities
      ;add  select custom date or a specific period
      ; changed add-option to gnc:register-trep-option
-(let ((periodoptions gnc:*transaction-report-options*))
+(let ((periodoptions gnc:*transaction-report-options*));; see gnc:register option above for reason for entry
     (gnc:register-trep-option
         (gnc:make-multichoice-callback-option
     ;    (gnc:make-multichoice-option
         the_tab (N_ text-whichperiod)
         "ca" (N_ "Select which time period to use")
-        'period
+        'last
 ;;        gnc:list-datechoices
 ;;        ))
         gnc:list-datechoices #f
@@ -1316,7 +1643,7 @@
     ; add pick specific last XX
     (gnc:register-trep-option
         (gnc:make-multichoice-option the_tab (N_ text-last)
-        "cg" (N_ "Pick portion of the year for report") 'last_qtr
+        "cg" (N_ "Pick portion of the year for report") 'lastmonth
         gnc:list-lasts
         ))
       ; add pick specific month
@@ -1328,7 +1655,7 @@
       ; add pick for multiply or divide
     (gnc:register-trep-option
         (gnc:make-multichoice-option the_tab (N_ "Scale Results")
-        "ci" (N_ "Scale the results - multiply or divide by scale factor") '*
+        "ci" (N_ "Scale the base periods results - multiply or divide by scale factor  NOTE Consider scaling ALL periods to a given number of days using option in middle of Compare tab") '*
         gnc:list-operands
         ))
     ; add where number for multiply or divide can be changed
@@ -1367,7 +1694,7 @@
 
     (gnc:register-trep-option
         (gnc:make-multichoice-option pagename-compare (N_ text-compare-divide)
-        "b" (N_ "Divide period into smaller periods") 'months
+        "ba" (N_ "Divide period into smaller periods") 'months
         gnc:list-comparechoices
         ))
 
@@ -1375,11 +1702,11 @@
         (gnc:make-multichoice-callback-option
     ;    (gnc:make-multichoice-option
         pagename-compare (N_ text-whichcompareperiod)
-        "ca" (N_ "Select which time period to use")
-        'period
+        "bt" (N_ "Select time period to use")
+        'select-num
 ;;        gnc:list-datechoices
 ;;        ))
-        gnc:list-datechoices #f
+        gnc:list-datechoices-comp #f
         (lambda (x)
         (gnc-option-db-set-option-selectable-by-name
          periodoptions pagename-compare (N_ text-pick-year)
@@ -1393,41 +1720,42 @@
         (gnc-option-db-set-option-selectable-by-name
          periodoptions pagename-compare (N_ text-month)
          (if (equal? x 'month) #t #f))
+        (gnc-option-db-set-option-selectable-by-name
+         periodoptions pagename-compare (N_ text-exclude-average)
+         (if (equal? x 'select-num) #t #f))
+        (gnc-option-db-set-option-selectable-by-name
+         periodoptions pagename-compare (N_ text-numbercompareperiods)
+         (if (equal? x 'select-num) #t #f))
         ))
     ))
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;  add exclude last week or month from average
+    (gnc:register-trep-option
+        (gnc:make-simple-boolean-option
+           pagename-compare (N_ text-exclude-average)
+        "bw" (N_ "If using the next option - number of periods - Do not include the last week in week averages, last month in month averages") #t
+        ))
+    ;  add pick specific period
+    ; add where number for multiply or divide can be changed
+    (gnc:register-trep-option
+        (gnc:make-number-range-option pagename-compare (N_ text-numbercompareperiods)
+        "ca" (N_ text-help-numcompareperiods)
+            3.0     ;; default
+            1       ;; lower bound
+          55.0     ;; upper bound
+            0     ;; number of decimals
+            1.0    ;; step size
+        ))
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;
      ; add  custom date
     (gnc:options-add-date-interval!
      gnc:*transaction-report-options* pagename-compare
         custom-from-date custom-to-date "cb")
 
-     ;  add pick year for specific period
-    (gnc:register-trep-option
-        (gnc:make-multichoice-option pagename-compare (N_ text-pick-year)
-        "ce" (N_ "Pick the year for report") 'last-yr
-        gnc:list-years
-        ))
-     ;  add pick specific period
-    (gnc:register-trep-option
-        (gnc:make-multichoice-option pagename-compare (N_ text-period)
-        "cf" (N_ "Pick portion of the year for report") 'fullyear
-        gnc:list-periods
-        ))
-    ; add pick specific last XX
-    (gnc:register-trep-option
-        (gnc:make-multichoice-option pagename-compare (N_ text-last)
-        "cg" (N_ "Pick portion of the year for report") 'last_qtr
-        gnc:list-lasts
-        ))
-      ; add pick specific month
-    (gnc:register-trep-option
-        (gnc:make-multichoice-option pagename-compare (N_ text-month)
-        "ch" (N_ "Pick which month for report") '4
-        gnc:list-months
-        ))
       ; add pick for multiply or divide
     (gnc:register-trep-option
-        (gnc:make-multichoice-option pagename-compare (N_ "Scale Results")
-        "ci" (N_ "Scale the results - multiply or divide by scale factor") '*
+        (gnc:make-multichoice-option pagename-compare (N_ "Scale Compare Period Results")
+        "ci" (N_ "Scale all of the compare periods values - multiply or divide by scale factor -  Also consider scaling to a number of days - see option below") '*
         gnc:list-operands
         ))
     ; add where number for multiply or divide can be changed
@@ -1457,7 +1785,30 @@
             0       ;; number of decimals
             1.0     ;; step size
         ))
-
+     ;  add pick year for specific period
+    (gnc:register-trep-option
+        (gnc:make-multichoice-option pagename-compare (N_ text-pick-year)
+        "gc" (N_ "Pick the year for report") 'last-yr
+        gnc:list-years
+        ))
+     ;  add pick specific period
+    (gnc:register-trep-option
+        (gnc:make-multichoice-option pagename-compare (N_ text-period)
+        "gd" (N_ "Pick portion of the year for report") 'fullyear
+        gnc:list-periods
+        ))
+    ; add pick specific last XX
+    (gnc:register-trep-option
+        (gnc:make-multichoice-option pagename-compare (N_ text-last)
+        "ge" (N_ "Pick portion of the year for report") 'last_qtr
+        gnc:list-lasts
+        ))
+      ; add pick specific month
+    (gnc:register-trep-option
+        (gnc:make-multichoice-option pagename-compare (N_ text-month)
+        "gf" (N_ "Pick which month for report") '4
+        gnc:list-months
+        ))
  ; (gnc:register-trep-option
  ;  (gnc:make-multichoice-option
  ;   pagename-general (N_ "Style")
@@ -1745,7 +2096,7 @@
      (gnc:make-simple-boolean-option
       pagename-sorting (N_ optname-find-min)
       "j1"
-      (N_ "Only show amounts greater than or equal to")
+      (N_ "Only show lines where at least one entry is an amount greater than or equal to")
      #f))
 
     (gnc:register-trep-option
@@ -1763,7 +2114,7 @@
      (gnc:make-simple-boolean-option
       pagename-sorting (N_ optname-find-max)
       "j3"
-      (N_ "Only show entries less than or equal")
+      (N_ "Only show lines where at least one entry is less than or equal")
       #f))
 
     (gnc:register-trep-option
@@ -1780,7 +2131,7 @@
     (gnc:register-trep-option
     (gnc:make-complex-boolean-option
      pagename-sorting (N_ optname-find-text?)
-    "k1" (N_ "Only show transactions containing the string") #f
+    "k1" (N_ "Only show entries (could be descriptions, accounts,... what ever is choosen to search on) containing the string") #f
       #f
     (lambda (x) (gnc-option-db-set-option-selectable-by-name
          gnc:*transaction-report-options*
@@ -1881,7 +2232,14 @@
     ;; note the "sign reverse" multichoice option in between here
  ;   (list (N_ "Use old running balance")      "q0"  (N_ "Use old method of computing running balance , may need for different currencies") #f)
     (list optname-days                         "q1"  (N_ "Display number of days in each period") #t)
-    (list optname-show-imbalance              "r"  opthelp-show-imbalance #t)
+    (list optname-show-average                 "q2"  opthelp-show-average #t)
+    (list optname-show-totalcol                "q3"  opthelp-show-totalcol #t)
+    (list optname-show-assets                  "q4"  optname-show-assets-help #t)
+    (list optname-show-liabilities             "q5"  optname-show-liabilities-help #t)
+    (list optname-show-income                  "q6"  optname-show-income-help #t)
+    (list optname-show-expenses                "q7"  optname-show-expenses-help #t)
+    (list optname-show-equities                "q8"  optname-show-equities-help #t)
+    (list optname-show-imbalance              "r"    opthelp-show-imbalance #t)
     ; optname-descript-titlecase is being shown here instead of line d1
       ))
 
@@ -1908,7 +2266,7 @@
    (gnc:make-multichoice-option
     pagename-display (N_ "Sign Reverses")
     "p" (N_ "Reverse amount display for certain account types.")
-    'none
+    'income-expense
     (list
      (vector 'none (N_ "None") (N_ "Don't change any displayed amounts."))
      (vector 'income-expense (N_ "Income and Expense")
@@ -1933,9 +2291,27 @@ Credit Card, and Income accounts.")))))
     (sprintf #f (_ "%s") findtitle ))
 
 (define (display-date-interval-columns begin end)
-  (let ((begin-string (gnc-print-date begin))
-        (end-string (gnc-print-date end)))
-    (sprintf #f (_ "From %s To %s") begin-string end-string )))
+  (let* (
+        (period-start (gnc:timepair->date begin))
+        (start-day (tm:mday period-start))
+        (end-start-1-month (gnc:increment-month-less-1-day period-start 1))
+        (end-start-1-year (gnc:increment-month-less-1-day period-start 12))
+        (period-end (gnc:timepair->date end))
+        (fiscal-start (gnc:timepair->date (gnc:secs->timepair (gnc-accounting-period-fiscal-start))))
+        (fiscal-day  (tm:mday fiscal-start))
+        (display-date (sprintf #f (_ " %s To %s") (gnc-print-date begin) (gnc-print-date end) ))
+        )
+
+          ;check if it is an entire year or an entire month
+       (if (and (gnc:date-eq? period-end end-start-1-year) (equal? start-day fiscal-day))
+              (set! display-date (sprintf #f (_ " %s ") (number->string (gnc:date-get-year period-start))))
+            )
+       (if (and (gnc:date-eq? period-end end-start-1-month) (equal? start-day fiscal-day))
+           (set! display-date (sprintf #f (_ (string-append (gnc-locale-to-utf8 (strftime "%B " period-start))
+                                              "<br>" (gnc-locale-to-utf8 (strftime " %Y"  period-start)) )))))
+         ;  (set! display-date (sprintf #f (_ (gnc:date-get-month-year-string  period-start)))))
+       ;  ))
+         display-date))
 
 (define (display-num-days days)
   (if (number? days)
@@ -2067,8 +2443,8 @@ Credit Card, and Income accounts.")))))
                 )
         )
         )
-        (filter splitfound? splits )
-        )
+   (filter splitfound? splits)
+ )
 
     ;
 
@@ -2079,6 +2455,101 @@ Credit Card, and Income accounts.")))))
                 (or (not find-max?) (<= value-num find-max ))
             )
 ))
+
+(define (filtersplits-acct splits account-types-to-reverse)
+
+    (define (acctfound? currentsplit )
+        ;  (if (not (null? splits))
+
+        (let* (
+            (parent (xaccSplitGetParent currentsplit))
+            (descript (xaccTransGetDescription parent))
+
+            (account (xaccSplitGetAccount currentsplit))
+            (account-type (xaccAccountGetType account))
+            (account-type-string (xaccAccountGetTypeStr
+                        (xaccAccountGetType account)))
+            (damount (if (gnc:split-voided? currentsplit)
+                            (xaccSplitVoidFormerAmount currentsplit)
+                            (xaccSplitGetAmount currentsplit)))
+            (currency (if (not (null? account))
+                      (xaccAccountGetCommodity account)
+                      (gnc-default-currency)))
+            (report-currency (if comm-curr?
+                                curr
+                                currency))
+            (trans-date (gnc-transaction-get-date-posted parent))
+
+            (split-value (gnc:exchange-by-pricedb-nearest
+                            (gnc:make-gnc-monetary
+                            currency
+                            (if (member account-type account-types-to-reverse)
+                                (gnc-numeric-neg damount)
+                                damount))
+                            report-currency
+                            ;; Use midday as the transaction time so it matches a price
+                            ;; on the same day.  Otherwise it uses midnight which will
+                            ;; likely match a price on the previous day
+                            (timespecCanonicalDayTime trans-date)))
+                )
+;;;;;
+        (define (found-text? which-field text-to-find ); based on entries in find-field-number
+        (case which-field
+        ((10) ; 'description
+            (string-contains (string-append " " (string-upcase (xaccTransGetDescription parent) ) " ")  text-to-find))
+        ((13) ; 'memo
+            (string-contains (string-append " " (string-upcase (xaccSplitGetMemo currentsplit) ) " ")  text-to-find))
+        ((14) ; 'notes
+            (string-contains (string-append " " (string-upcase (xaccTransGetNotes parent) ) " ")  text-to-find))
+        (( 1) ; 'account-name
+            (string-contains (string-append " " (string-upcase (gnc-account-get-full-name account) ) " ")  text-to-find))
+        (( 2) ;'accountcodee
+            (string-contains (string-append " " (string-upcase (xaccAccountGetCode account) ) " ")  text-to-find))
+        ((16 ) ; 'memo/notes
+            (or (string-contains (string-append " " (string-upcase (xaccSplitGetMemo currentsplit) ) " ")  text-to-find) ;memo
+            (string-contains (string-append " " (string-upcase (xaccTransGetNotes parent) ) " ")  text-to-find))) ;notes
+        ((15) ; 'any
+            (or (string-contains (string-append " " (string-upcase (xaccTransGetDescription parent) ) " ")  text-to-find) ;description
+            (string-contains (string-append " " (string-upcase (xaccSplitGetMemo currentsplit) ) " ")  text-to-find) ; memo
+            (string-contains (string-append " " (string-upcase (xaccTransGetNotes parent) ) " ")  text-to-find) ;notes
+            (string-contains (string-append " " (string-upcase (gnc-account-get-full-name account) ) " ")  text-to-find) ;account-name
+            (string-contains (string-append " " (string-upcase (xaccAccountGetCode account) ) " ")  text-to-find))) ; account-code
+        ((11) ; 'number
+            (or (string-contains (string-append " " (string-upcase (gnc-get-num-action parent currentsplit) ) " ")  text-to-find) ;num
+                (if (gnc-get-num-action parent #f)
+            (string-contains (string-append " " (string-upcase (gnc-get-num-action parent #f) ) " ")  text-to-find); Trans Number
+             #f)))
+        (( 3) ; 'date
+            (string-contains (string-append " " (string-upcase (gnc-print-date (gnc-transaction-get-date-posted parent) )) " ")  text-to-find)) ;date
+        (( 5) ; 'reconciled-date
+                 (let* ((date (gnc-split-get-date-reconciled currentsplit))
+                        (printed-date (if (equal? date (cons 0 0))
+                                            ""
+                                            (gnc-print-date date))))
+            (string-contains (string-append " " (string-upcase printed-date) " ")  text-to-find))) ;reconciled date
+        ((17) ; 'reconcile
+            (string-contains (string-append " " (string-upcase (string (xaccSplitGetReconcile currentsplit)) ) " ")  text-to-find))
+
+        ))
+;;;;;;
+            (or (not find-text?)
+                (if find-text?
+                    (let* ((found1? (found-text? find1-field  find1-text)))
+                        (if (equal? find2-operand 'none)
+                                found1?
+                        (if (equal? find2-operand 'and)
+                                (and found1? (found-text? find2-field  find2-text))
+                        (if (equal? find2-operand 'or)
+                                (or found1? (found-text? find2-field  find2-text))
+                        (if (equal? find2-operand 'not)
+                                (and found1? (not (found-text? find2-field  find2-text)))
+                                #f)))))
+                                #f)
+                )
+        )
+        )
+  (filter acctfound? splits )
+)
 
 ;;
 ; swap hash table keys and values so can look up stored currency string and get currency
@@ -2114,6 +2585,69 @@ Credit Card, and Income accounts.")))))
     (gnc:option-value
      (gnc:lookup-option options pagename-general
        optname-table-export)))
+   (define (msg-line-location table msg)
+   (gnc:html-table-append-row/markup! table def:grand-total-style ;row-style
+                (gnc:make-html-text
+                  (gnc:html-markup-h3
+                  msg))))
+  (define (print-type-totals table acct-type total-collector total-collector-hash
+                             type-total-collector type-total-collector-hash
+                             width export?) ; def:grand-total-style )
+      (let* (
+          (heading-list '() )
+          )
+    (gnc:warn "total-curr" total-current-type)
+    (gnc:warn "acct-type " acct-type)
+    (if  (not (equal? total-current-type acct-type))
+        (begin
+          (gnc:html-table-append-row/markup!
+           table
+           def:grand-total-style
+           (list
+            (gnc:make-html-table-cell/size
+             1 width (gnc:make-html-text (gnc:html-markup-hr)))))
+
+           ;;determine which type of account
+           ;;save to this type of account the totals
+      (if (gnc:option-value (gnc:lookup-option options pagename-display "Totals"))
+            (begin
+                (comp-add-subtotal-row table width
+                    (_ (string-append "&nbsp;  Total " (list-ref type-namelist total-current-type)))
+                            total-collector total-collector-hash def:grand-total-style export?)
+                 ;; check if should print total assets - liabilities  or total icome - expenses
+                 ;;    or total assets - liabilities + equity
+                (if (or (and (= total-current-type 1) (= previous-type 0))
+                        (and (= total-current-type 3) (= previous-type 2)))
+                    (begin
+                        (add-rule table (+ last-column columns-headings
+                            (if #f 1 0)))
+                        (comp-add-subtotal-row table width
+                            (_ (string-append "&nbsp;  Total " (list-ref type-namelist previous-type)
+                                " - " (list-ref type-namelist total-current-type)))
+                                type-total-collector type-total-collector-hash def:grand-total-style export?)
+                    )
+                        ;; check if should print total assets - liabilities + equity
+                    (if (and (= total-current-type 4) (= previous-type 7))
+                        (begin
+                            (add-rule table (+ last-column columns-headings
+                                (if #f 1 0)))
+                            (comp-add-subtotal-row table width
+                                (_ (string-append "&nbsp;  Total " (list-ref type-namelist 1)
+                                    " - " (list-ref type-namelist 2)
+                                    " + " (list-ref type-namelist total-current-type)))
+                                type-total-collector type-total-collector-hash def:grand-total-style export?))
+                    )
+                 )
+     ))
+    (set! previous-type (if (and (= total-current-type 1) (= previous-type 0))
+                            7
+                            total-current-type))
+    (set! total-current-type acct-type)
+    #t)
+    #f)
+    ))
+
+  ;;;;;;;
 
   (define (add-other-split-rows split split-trans table used-columns
                                 row-style account-types-to-reverse)
@@ -2144,13 +2678,13 @@ Credit Card, and Income accounts.")))))
                        ;; add to total for the account column
                         (let* ( (col 1))
                         (while (<= col last-column) ;; change column
-                        (hash-set! subtotal-hash (string-append (number->string col) "#Vv;" the-currency)
+                        (hash-set! subtotal-hash (string-append (number->string col) markerB the-currency)
                             (gnc:make-gnc-monetary currency
                             (gnc-numeric-add
                             (gnc:gnc-monetary-amount
                                 (get-monetary split-trans col))
                             (gnc:gnc-monetary-amount
-                            (hash-ref subtotal-hash (string-append (number->string col) "#Vv;" the-currency)
+                            (hash-ref subtotal-hash (string-append (number->string col) markerB the-currency)
                                 (gnc:make-gnc-monetary currency (gnc-numeric-zero))))
                                     GNC-DENOM-AUTO GNC-RND-ROUND))
                             )
@@ -2176,22 +2710,28 @@ Credit Card, and Income accounts.")))))
                                   comp-secondary-subtotal-renderer
                                   primary-subtotal-collector
                                   secondary-subtotal-collector
-                                  total-collector)
+                                  total-collector
+                                  type-total-collector)
 
     (gnc:report-percent-done (* 100 (/ work-done work-to-do)))
     (set! work-done (+ 1 work-done))
 
     (if (null? list-thekeys)
         (begin
-          (gnc:html-table-append-row/markup!
-           table
-           def:grand-total-style
-           (list
-            (gnc:make-html-table-cell/size
-             1 width (gnc:make-html-text (gnc:html-markup-hr)))))
-      (if (gnc:option-value (gnc:lookup-option options pagename-display "Totals"))
-          (comp-render-grand-total table width total-collector total-collector-hash export?)))
-
+            (gnc:html-table-append-row/markup!
+                table
+                def:grand-total-style
+                (list
+                    (gnc:make-html-table-cell/size
+                        1 width (gnc:make-html-text (gnc:html-markup-hr)))))
+            (if (gnc:option-value (gnc:lookup-option options pagename-display "Totals"))
+                (if (not no-grand-total?)
+                    (comp-render-grand-total table width total-collector total-collector-hash export?)
+                    (print-type-totals table #f
+                              total-collector total-collector-hash
+                              type-total-collector type-total-collector-hash width export? ) ; def:grand-total-style)
+            ))
+        )
         (let* (
             (current-trans (car list-thekeys))
 
@@ -2214,43 +2754,60 @@ Credit Card, and Income accounts.")))))
        ;        current current-trans table used-columns def:alternate-row-style
        ;        account-types-to-reverse))
 
-          (primary-subtotal-collector 'add  ;; change primary-subtotal collector 'add  to say
-                                            ;; (add-to-total primary-subtotal-collector-hash current-trans)
-                                            ;; currently adds in amount from base column , change to add each col to that
-                                            ;; columns total
+          (primary-subtotal-collector 'add ;; currently adds in amount from base column
                                       (gnc:gnc-monetary-commodity
                                        split-value)
                                       (gnc:gnc-monetary-amount
                                        split-value))
-           (add-to-total primary-subtotal-collector-hash current-trans)
-          (secondary-subtotal-collector 'add  ;; currently adds in amount from base column , change to add each col to that
-                                        (gnc:gnc-monetary-commodity    ;; columns total
+           (add-to-total primary-subtotal-collector-hash current-trans)  ;adds each non-base  col to the total
+          (secondary-subtotal-collector 'add  ;; currently adds in amount from base column
+                                        (gnc:gnc-monetary-commodity
                                          split-value)
                                         (gnc:gnc-monetary-amount
                                          split-value))
-           (add-to-total secondary-subtotal-collector-hash current-trans)
+           (add-to-total secondary-subtotal-collector-hash current-trans) ;; adds each non-base col to the total
            (add-to-total total-collector-hash current-trans)
+           (add-to-total type-total-collector-hash current-trans)
 
           (total-collector 'add
                            (gnc:gnc-monetary-commodity split-value)
                            (gnc:gnc-monetary-amount split-value))
 
+          (type-total-collector 'add
+                           (gnc:gnc-monetary-commodity split-value)
+                           (gnc:gnc-monetary-amount split-value))
+
           (if (and comp-primary-subtotal-pred
-                   (or (not next-trans)
-                       (and next-trans
+                   (or (not next-trans) ;;if not another transaction after this
+                       (and next-trans  ;; or next transaction doesnt match same primary criteria as this transaction
                            (not (comp-primary-subtotal-pred (get-primary-key current-trans) (get-primary-key next-trans))))))
 
               (begin
+               (gnc:warn " what about here")
                 (if comp-secondary-subtotal-pred
 
                     (begin
-                      (comp-secondary-subtotal-renderer ;; change to show each columns total for secondary instead of just base
+                      (comp-secondary-subtotal-renderer ;; changed to show each columns total for secondary instead of just base
                        table width current-trans (get-secondary-key current-trans)
                        secondary-subtotal-collector
                        secondary-subtotal-collector-hash
                        def:secondary-subtotal-style used-columns export?)
                       (set! secondary-subtotal-collector-hash (make-hash-table))
                       (secondary-subtotal-collector 'reset #f #f)))
+
+                      (if (print-type-totals table (get-main-acct-type next-trans)
+                              total-collector total-collector-hash
+                              type-total-collector type-total-collector-hash width export? ) ; def:grand-total-style)
+                        (begin
+                            (total-collector 'reset #f #f)
+                            (set! total-collector-hash (make-hash-table))
+                            (if (and next-trans (= (get-main-acct-type next-trans) 2))
+                                (begin
+                                    (type-total-collector 'reset #f #f)
+                                    (set! type-total-collector-hash (make-hash-table))
+                            ))
+                        )
+                      )
 
                 (comp-primary-subtotal-renderer table width current-trans (get-primary-key current-trans)
                                            primary-subtotal-collector
@@ -2276,17 +2833,51 @@ Credit Card, and Income accounts.")))))
                            (and next-trans
                                 (not (comp-secondary-subtotal-pred
                                       (get-secondary-key current-trans) (get-secondary-key next-trans))))))
-                  (begin (comp-secondary-subtotal-renderer
+                  (begin               
+                    (comp-secondary-subtotal-renderer
                           table width current-trans (get-secondary-key current-trans)
                           secondary-subtotal-collector
                           secondary-subtotal-collector-hash
                           def:secondary-subtotal-style used-columns export?)
-                         (set! secondary-subtotal-collector-hash (make-hash-table))
-                         (secondary-subtotal-collector 'reset #f #f)
-                         (if next-trans
-                             (comp-secondary-subheading-renderer
-                              next-trans (get-secondary-key next-trans) table width
-                              def:secondary-subtotal-style used-columns)))))
+                    (set! secondary-subtotal-collector-hash (make-hash-table))
+                    (secondary-subtotal-collector 'reset #f #f)
+                    (if next-trans
+                        (comp-secondary-subheading-renderer
+                            next-trans (get-secondary-key next-trans) table width
+                            def:secondary-subtotal-style used-columns)
+                  ))
+               )
+          )
+   ; (msg-line-location table "around 2860 test 3 here")
+     (if (print-type-totals table (get-main-acct-type next-trans)
+                              total-collector total-collector-hash
+                              type-total-collector type-total-collector-hash width export? ) ; def:grand-total-style)
+            (begin
+                (total-collector 'reset #f #f)
+                (set! total-collector-hash (make-hash-table))
+                (if (and next-trans (= (get-main-acct-type next-trans) 2))
+                    (begin
+                        (type-total-collector 'reset #f #f)
+                        (set! type-total-collector-hash (make-hash-table))
+                ))
+            )
+        )
+
+   (if no-grand-total?
+       (if (print-type-totals table (get-main-acct-type next-trans)
+                              total-collector total-collector-hash
+                              type-total-collector type-total-collector-hash width export? ) ; def:grand-total-style)
+            (begin
+                (total-collector 'reset #f #f)
+                (set! total-collector-hash (make-hash-table))
+                (if (and next-trans (= (get-main-acct-type next-trans) 2))
+                    (begin
+                        (type-total-collector 'reset #f #f)
+                        (set! type-total-collector-hash (make-hash-table))
+                ))
+            )
+        )
+    )
 
           (do-rows-with-subtotals rest-trans
                                   table
@@ -2304,7 +2895,8 @@ Credit Card, and Income accounts.")))))
                                   comp-secondary-subtotal-renderer
                                   primary-subtotal-collector
                                   secondary-subtotal-collector
-                                  total-collector))))
+                                  total-collector
+                                  type-total-collector))))
 
 
   (let* ((table (gnc:make-html-table))
@@ -2335,6 +2927,8 @@ Credit Card, and Income accounts.")))))
          (set! primary-subtotal-collector-hash (make-hash-table))
          (set! secondary-subtotal-collector-hash (make-hash-table))
          (set! total-collector-hash (make-hash-table))
+         (set! type-total-collector-hash (make-hash-table))
+         (set! total-current-type (get-main-acct-type (car list-thekeys)))
           (do-rows-with-subtotals  list-thekeys table used-columns width
                                   multi-rows? #t
                                   export?
@@ -2345,6 +2939,7 @@ Credit Card, and Income accounts.")))))
                                   comp-secondary-subheading-renderer
                                   comp-primary-subtotal-renderer
                                   comp-secondary-subtotal-renderer
+                                  (gnc:make-commodity-collector)
                                   (gnc:make-commodity-collector)
                                   (gnc:make-commodity-collector)
                                   (gnc:make-commodity-collector))))
@@ -2378,8 +2973,9 @@ Credit Card, and Income accounts.")))))
         ;; in guile code
         ((= splitcount 2)
          (let* ((other      (xaccSplitGetOtherSplit split))
-                (other-acct (xaccSplitGetAccount other)))
-               (member other-acct account-list)))
+                (other-acct (xaccSplitGetAccount other))
+                (acct (xaccSplitGetAccount split)))
+               (or (member acct account-list) (member other-acct account-list))))
 
         ;; A multi-split transaction - run over all splits
         ((> splitcount 2)
@@ -2563,7 +3159,7 @@ Credit Card, and Income accounts.")))))
                                      get-array-value-num-base     =           <               >       ))
 
     (cons 'amount_secondary  (vector get-array-value-num-base     =           <               >
-                                      get-secondary-key           string-ci=? string-ci<?     string-ci>?))
+                                     get-secondary-key           string-ci=? string-ci<?     string-ci>?))
 
     (cons 'amount_amount     (vector get-array-value-num-base     =           <               >
                                      get-array-value-num-base     =           <               >       )))
@@ -2581,7 +3177,11 @@ Credit Card, and Income accounts.")))))
     ;;  and payee-account-guid-hash - consolidates transactions having same description and or account name
     ;;
 (define (set-date-tm trans-date-tm sort-date-type )
-    (case sort-date-type
+    (begin
+        (set-tm:sec trans-date-tm 0)
+        (set-tm:min trans-date-tm 0)
+        (set-tm:hour trans-date-tm 12)
+      (case sort-date-type
         ((5) ; 'none
             (set-tm:mday trans-date-tm 1 )
             )
@@ -2608,10 +3208,33 @@ Credit Card, and Income accounts.")))))
             )
         )
         trans-date-tm
-    )
+   ))
 ;;
+  (define (keep-account? account)
+    (let ((keep-account #f))
+             (if show-expenses?
+                (if (member account expense-accounts)
+                    (set! keep-account #t))
+            )
+            (if show-income?
+                (if (member account income-accounts)
+                    (set! keep-account #t))
+            )
+            (if show-assets?
+                (if (member account asset-accounts)
+                    (set! keep-account #t))
+            )
+            (if show-liabilities?
+                (if (member account liability-accounts)
+                    (set! keep-account #t))
+            )
 
-
+            (if show-equities?
+                (if (member account equity-accounts)
+                    (set! keep-account #t))
+            )
+         keep-account
+    ))
   (define (composite-sort key split column-vector)
 
     (case key
@@ -2619,12 +3242,21 @@ Credit Card, and Income accounts.")))))
              " "
             )
         ((1)  ; 'account-name
-          (let (
-                (account (xaccSplitGetAccount split)))
-                (if account-full-name?
-                    (string-append  "#Yv;" (gnc-account-get-full-name account) )
-                    (string-append  (gnc-account-get-full-name account) "#Yv;" (xaccAccountGetName account))))
-            )
+          (let* (
+                (account (xaccSplitGetAccount split))
+                (depth (gnc-account-get-current-depth account) ))
+                (while (< 2 depth)
+                    (set! account (gnc-account-get-parent account))
+                    (set! depth (- depth 1))
+                )
+                (if (< depth 2)
+                    (string-append markerA ";" (gnc-account-get-full-name account))
+                    (string-append markerA (gnc-account-get-full-name (gnc-account-get-parent account) ) ";" (gnc-account-get-full-name  account))
+                )
+              ;  (if account-full-name?
+              ;      (string-append  markerA (gnc-account-get-full-name account) )
+             ;       (string-append  (gnc-account-get-full-name account) markerA (xaccAccountGetName account))))
+            ))
         ((2)  ; 'account-code
             (let (
                 (account (xaccSplitGetAccount split)))
@@ -2732,10 +3364,12 @@ Credit Card, and Income accounts.")))))
         (descript-raw  (if (used-description column-vector)
                         (xaccTransGetDescription parent)
                         " "))
-        (guids+description (list
+        (guids+description+acct (list
                 trans-guid
                 account-guid
-                descript-raw)
+                descript-raw
+                account
+                )
                 )
 
         (descript (if consolidate-case-sensitive?
@@ -2803,9 +3437,9 @@ Credit Card, and Income accounts.")))))
                     memo
                     (string-upcase memo)))
 
-        (acctnamecode (if (or (used-account-name column-vector) (used-account-code column-vector))
+        (acctnamecode (if (used-account-name column-vector)
                         (account-namestring account
-                                (used-account-code      column-vector)
+                                #f  ;aact-code is handled separately
                                 (used-account-name      column-vector)
                                 (used-account-full-name column-vector))
                                 ""))
@@ -2819,16 +3453,30 @@ Credit Card, and Income accounts.")))))
                 )
         (hashed-currency (hash-ref currency-type-hash report-currency currency-type-str)) ; in case transactions with same description have different currencies
 
-        (hashkey (string-append  primary-sort "#Yw;" secondary-sort "#Yx;" date-string "#Yy;"
-                         descript "#Yz;"
-            acctnamecode "#Zy;" acct-code "#Zx;" acctothernamcod "#Zw;" memo "#Zv;" member-reverse-sign "#Zu;" hashed-currency  ))
+        (hashkey (string-append  primary-sort marker1 secondary-sort marker2 date-string marker3
+                         descript marker4
+            acctnamecode marker5 acct-code marker6 acctothernamcod marker7 memo marker8 member-reverse-sign marker9 hashed-currency  ))
+        (keep-transaction #t)
          )
-        (total-payee-hash-add! payee-hash hashkey split-value-mon payee-account-guid-hash guids+description)
-        (if (equal? currency-type-str hashed-currency); if we used the current number - add to hash and prepare new number
+     ;    (gnc:warn "(gnc-account-get-full-name account)" (gnc-account-get-full-name account))
+     ;    (gnc:warn " account"  account)
+     ;    (gnc:warn "(gnc-account-get-current-depth account)" (gnc-account-get-current-depth account))
+    ;     (gnc:warn "(gnc-account-get-children account)" (gnc-account-get-children account))
+    ;     (gnc:warn "(gnc-account-get-parent account)" (gnc-account-get-parent account))
+    ;     (gnc:warn "(xaccAccountGetType account)" (xaccAccountGetType account))
+
+
+    ;;
+        (if (keep-account? account)
+          (begin
+            ;(gnc:warn "keep account" (gnc-account-get-full-name account) )
+            (total-payee-hash-add! payee-hash hashkey split-value-mon payee-account-guid-hash guids+description+acct)
+            (if (equal? currency-type-str hashed-currency); if we used the current number - add to hash and prepare new number
                 (begin
                 (hash-set! currency-type-hash report-currency hashed-currency )
                 (set! currency-type-num (+ 1 currency-type-num))
                 (set! currency-type-str (number->string currency-type-num))
+            ))
         ))
         (if (> (length rest) 0)
             (get-the-transactions rest account-full-name? account-code? consolidate-case-sensitive? primary-comp-key secondary-comp-key ))
@@ -2859,7 +3507,8 @@ Credit Card, and Income accounts.")))))
     (filter-mode (opt-val pagename-accounts "Filter Type"))
     (report-title (opt-val
                        pagename-general
-                       gnc:optname-reportname)))
+                       gnc:optname-reportname))
+    )
 
 
 (define (store-period-values column list_of_trans scaling-mul-val scaling-div-val)
@@ -2873,7 +3522,7 @@ Credit Card, and Income accounts.")))))
     (lambda (split-trans)
         (let* (
         (thekey (car split-trans))
-        (guids+description (hash-ref payee-account-guid-hash thekey ))
+        (guids+description+acct (hash-ref payee-account-guid-hash thekey ))
 
         (report-currency (hash-ref currency-lookup-hash (get-currency-type split-trans)))
         (currency-frac (gnc-commodity-get-fraction report-currency))
@@ -2895,14 +3544,14 @@ Credit Card, and Income accounts.")))))
         (row (hash-ref pointer-hash thekey row-number))
         )
         (array-set! amounts-array split-value row column)
-        (array-set! guid-array guids+description row column)
+        (array-set! guid-array guids+description+acct row column)
         (if (eq? row row-number)    ; if we wrote it on row-number than we wrote on a new row,
             (begin                    ;  set counter "row-number" to point to next unused line and store info about thekey
                 (hash-set! pointer-hash thekey row-number ) ;store key and the row number where this keys data is stored
                 ; store this lines key which contains description and or account name etcetra
                 (array-set! amounts-array report-currency row-number 0 )
                   ;store guid for account name along with how user stored name
-                (array-set! guid-array guids+description row-number 0 )
+                (array-set! guid-array guids+description+acct row-number 0 )
                 (set! row-number  (+ 1 row-number))
           ))
         ))
@@ -2979,12 +3628,13 @@ Credit Card, and Income accounts.")))))
 
       (if (eq? filter-mode 'exclude)
           (begin
-        ;;(gnc:warn "Excluding Filter Accounts")
+       ;; (gnc:warn "Excluding Filter Accounts")
         (set! splits (filter (lambda (split)
                        (not (is-filter-member split c_account_2)))
                      splits))
         )
           )
+
 
 
 ;; for find text
@@ -3043,8 +3693,7 @@ Credit Card, and Income accounts.")))))
     ;; step 4 of 4 needed for gnctimeperiod-utilities
 ;; the let needs to be a let*
 ;; may need to change op-value to get-option
-        (whichperiod-val (opt-val the_tab text-whichperiod))
-
+        (whichperiod-val   (opt-val the_tab text-whichperiod))
         (cust-start-date-tp    (gnc:timepair-start-day-time
                                     (gnc:date-option-absolute-time
                                     (opt-val the_tab
@@ -3054,12 +3703,19 @@ Credit Card, and Income accounts.")))))
                                     (gnc:date-option-absolute-time
                                     (opt-val the_tab
                                         custom-to-date))))
-        (year-val     (opt-val  the_tab text-pick-year))
-        (period-val   (opt-val  the_tab text-period))
-        (last-val   (opt-val the_tab text-last))
-        (month-val   (opt-val the_tab text-month))
-        (datelist   (gnc:getdates
-            (list whichperiod-val year-val period-val last-val month-val)) )
+        (datelist   (gnc:get-dates
+                (list
+                 (list 'whichperiod-val
+                       (opt-val the_tab text-whichperiod))
+                 (list 'year-val
+                       (opt-val the_tab text-pick-year))
+                 (list 'period-val
+                       (opt-val the_tab text-period))
+                 (list 'last-val
+                       (opt-val the_tab text-last))
+                 (list 'month-val
+                       (opt-val the_tab text-month))
+                 )))
         ;;
         ;; replace following two names with your names and comment out your old definitions
         (begindate    (if (equal? whichperiod-val 'customdates )
@@ -3072,7 +3728,7 @@ Credit Card, and Income accounts.")))))
                             (cadr datelist)))
 
         (list-base-period (gnc:getdatedelta   ;use to get number of days in base
-                            (list begindate enddate 'none)))
+                            (list begindate enddate 'one)))
 
 ;; end of section 4 needed for using gnctimeperiod-utilities
 ;;
@@ -3097,25 +3753,38 @@ Credit Card, and Income accounts.")))))
                                     (gnc:date-option-absolute-time
                                     (opt-val pagename-compare
                                         custom-to-date))))
-        (year-val2     (opt-val  pagename-compare text-pick-year))
-        (period-val2   (opt-val  pagename-compare text-period))
-        (last-val2   (opt-val pagename-compare text-last))
-        (month-val2   (opt-val pagename-compare text-month))
-        (datelist2   (gnc:getdates
-            (list whichperiod-val2 year-val2 period-val2 last-val2 month-val2)) )
+        (datelist2   (gnc:get-dates
+                (list
+                 (list 'whichperiod-val
+                       (opt-val pagename-compare text-whichcompareperiod))
+                 (list 'year-val
+                       (opt-val  pagename-compare text-pick-year))
+                 (list 'period-val
+                       (opt-val  pagename-compare text-period))
+                 (list 'last-val
+                       (opt-val pagename-compare text-last))
+                 (list 'month-val
+                       (opt-val pagename-compare text-month))
+                 )))
         ;;
+        (comparelist2   (gnc:getdates-compare (opt-val pagename-compare text-compare-divide)
+                              (inexact->exact (opt-val pagename-compare text-numbercompareperiods))
+                                              (opt-val pagename-compare text-exclude-average)))
         ;; replace following two names with your names and comment out your old definitions
-        (begindate2    (if (equal? whichperiod-val2 'customdates )
-                            cust-start-date2-tp
-                            (car datelist2)))
+        (begindate2   (cond ((equal? whichperiod-val2 'customdates ) cust-start-date2-tp)
+                            ((equal?  whichperiod-val2 'select-num) (car comparelist2))
+                            (else (car datelist2))
+                      ))
 
 
-        (enddate2      (if (equal? whichperiod-val2 'customdates )
-                            cust-end-date2-tp
-                            (cadr datelist2)))
+        (enddate2      (cond ((equal? whichperiod-val2 'customdates ) cust-end-date2-tp)
+                             ((equal? whichperiod-val2 'select-num) (cadr comparelist2))
+                             (else (cadr datelist2))
+                        ))
         (list-of-periods (gnc:getdatedelta
                             (list begindate2 enddate2 deltas-val)))
-
+        (list-avg-period (gnc:getdatedelta
+                            (list begindate2 enddate2 'one)))
 ;; end for comparison period
 
         (primary-key (opt-val pagename-sorting optname-prime-sortkey))
@@ -3133,10 +3802,21 @@ Credit Card, and Income accounts.")))))
     (base?  (or (not (opt-val pagename-compare optname-no-base?))
                 (not (opt-val pagename-compare optname-compare?))))
     ;(compare-scale-to-num   (gnc:make-gnc-numeric (inexact->exact (* 100 compare-scale-to-val)) 100))
+ ;; decompose the account list
+    (split-up-accounts (gnc:decompose-accountlist c_account_1))
 
         )
 
     (set! show-days? (opt-val pagename-display optname-days))
+
+    (set! show-average? (opt-val pagename-display optname-show-average))
+    (set! show-totalcol? (opt-val pagename-display optname-show-totalcol))
+    (set! show-assets? (opt-val pagename-display optname-show-assets))
+    (set! show-liabilities? (opt-val pagename-display optname-show-liabilities))
+    (set! show-income? (opt-val pagename-display optname-show-income))
+    (set! show-expenses? (opt-val pagename-display optname-show-expenses))
+    (set! show-equities? (opt-val pagename-display optname-show-equities))
+    (set! no-grand-total? (or (equal? primary-key 'account-name) (equal? secondary-key  'account-name)))
 
 ;for consolidate
     (set! comm-curr? (opt-val pagename-general optname-common-currency))
@@ -3158,7 +3838,7 @@ Credit Card, and Income accounts.")))))
 
 
 ;; for compare period scaling
-    (set! scale-op-val2      (opt-val pagename-compare "Scale Results"))
+    (set! scale-op-val2      (opt-val pagename-compare "Scale Compare Period Results"))
     (set! scale-num-val2  (opt-val pagename-compare "Scale Number Option"))
 
     (set! compare-scale-automatically? (opt-val pagename-compare optname-scale-automatically?))
@@ -3184,6 +3864,29 @@ Credit Card, and Income accounts.")))))
     (set! do-find? (or find-text? find-min? find-max?)    )
     (set! do-findamount? (or find-min? find-max?))
     (set! findtitle "")
+
+    (set! type-root-acct-list (make-list 10 #f))
+    (set! previous-type 9999)
+    (set! asset-accounts
+            (assoc-ref split-up-accounts ACCT-TYPE-ASSET))
+    (list-set! type-root-acct-list 0 asset-accounts)
+    (set! liability-accounts
+            (assoc-ref split-up-accounts ACCT-TYPE-LIABILITY))
+    (list-set! type-root-acct-list 1 liability-accounts)
+    (set! income-accounts
+            (assoc-ref split-up-accounts ACCT-TYPE-INCOME))
+    (list-set! type-root-acct-list 2 income-accounts)
+    (set! expense-accounts
+            (assoc-ref split-up-accounts ACCT-TYPE-EXPENSE))
+    (list-set! type-root-acct-list 3 expense-accounts)
+    (set! equity-accounts
+            (assoc-ref split-up-accounts ACCT-TYPE-EQUITY))
+    (list-set! type-root-acct-list 4 equity-accounts)
+
+    (set! acct-depth-name-list (make-list 10 #f))
+    (set! type-total-list (make-list 10 #f))
+
+
     (if (or find-text? find-min? find-max?)
         (let* (     (report-currency (if comm-curr?
                                         curr
@@ -3206,14 +3909,14 @@ Credit Card, and Income accounts.")))))
             ))
         (if find-min?
             (begin
-            (set! findtitle (string-append findtitle text-minimum (gnc:monetary->string
+            (set! findtitle (string-append findtitle (if find-text? "," "") text-minimum (gnc:monetary->string
                                     (gnc:make-gnc-monetary report-currency
                                     (gnc:make-gnc-numeric (inexact->exact (* 100 find-min)) 100)  ))))
             (set! find-min (* 100 find-min))
             ))
         (if find-max?
             (begin
-            (set! findtitle (string-append findtitle text-maximum (gnc:monetary->string
+            (set! findtitle (string-append findtitle (if (or find-text? find-min?) "," "") text-maximum (gnc:monetary->string
                                     (gnc:make-gnc-monetary report-currency
                                     (gnc:make-gnc-numeric (inexact->exact (* 100 find-max)) 100)  ))))
             (set! find-max (* 100 find-max))
@@ -3261,6 +3964,34 @@ Credit Card, and Income accounts.")))))
         (store-period-values last-column list_of_trans scaling-mul-val scaling-div-val)
         (set! last-column 0))
      )
+;; average period
+(if show-average?
+(let* (
+    (scaling-mul-val
+        (if compare-scale-automatically?
+            compare-scale-to-val
+            (if (eq? scale-op-val2 '* )
+                scale-num-val2
+                1)))
+    (num-periods (length list-of-periods))
+    (scaling-div-val (if compare-scale-automatically?
+        (caddr (car list-avg-period))
+        (if (eq? scale-op-val2 '/ )
+            scale-num-val2
+            num-periods)))
+    (avg-num-days (round (/ (caddr (car (gnc:getdatedelta (list begindate2 enddate2 'one)))) num-periods)))
+
+    )
+
+   (set! last-column (+ last-column 1))
+   (array-set! amounts-array
+        "Average" ;store time period title
+            0 last-column)
+   (get-periods-results  begindate2 enddate2)
+   (array-set! amounts-array avg-num-days 1 last-column) ;store number of days
+   (store-period-values last-column list_of_trans scaling-mul-val scaling-div-val)
+))
+
 ;; compare period is divided up into smaller parts based on users selection
 ;;  for loop reads in and stores as column in array each small period
     (if  compare?
@@ -3293,6 +4024,31 @@ Credit Card, and Income accounts.")))))
      list-of-periods)
      )
 
+;; total period
+(if show-totalcol?
+(let (
+    (scaling-mul-val
+        (if compare-scale-automatically?
+            compare-scale-to-val
+            (if (eq? scale-op-val2 '* )
+                scale-num-val2
+                1)))
+    (scaling-div-val (if compare-scale-automatically?
+        (caddr (car list-avg-period))
+        (if (eq? scale-op-val2 '/ )
+            scale-num-val2
+            1)))
+    )
+
+   (set! last-column (+ last-column 1))
+   (array-set! amounts-array
+        "Total" ;store time period title
+            0 last-column)
+   (get-periods-results  begindate2 enddate2)
+   (array-set! amounts-array (caddr (car list-avg-period)) 1 last-column) ;store number of days
+   (store-period-values last-column list_of_trans scaling-mul-val scaling-div-val)
+))
+
 (if (not (= row-number 2)) ;if row number is greater than 2 then some entries were found
  (let (
     ;; pointer-hash contains all of the transactions and what row in the array they are stored in
@@ -3324,18 +4080,26 @@ Credit Card, and Income accounts.")))))
                     (comp-sort-helper sort-type 6)
                         (comp-sort-helper sort-type 7)
                         ))
+        (acct-ascend  (if (and (equal? primary-key 'account-name) (equal? primary-order 'ascend))
+                           "Prime"
+                           (if (and (equal? secondary-key 'account-name) (equal? secondary-order 'ascend))
+                                "Second"
+                                "None")))
+
+        (as-li-in-ex-eq-list (append asset-accounts
+                                     liability-accounts
+                                     income-accounts
+                                     expense-accounts
+                                     equity-accounts))
+
              )
-        (set! list_of_trans  list_of_trans)
-     (set! list-thekeys (sortkeys list-thekeys var-p var-s comp-p1 comp-p2 comp-s1 comp-s2))
+
+     (set! list-thekeys (sortkeys list-thekeys var-p var-s comp-p1 comp-p2 comp-s1 comp-s2
+                    primary-key secondary-key acct-ascend as-li-in-ex-eq-list))
         )
-
-
-
-
 
         (if  (> (length list-thekeys) 0)
         (begin
-
               (let ((table
                      (make-split-table-comp
                       list-thekeys
@@ -3581,7 +4345,7 @@ Credit Card, and Income accounts.")))))
 
 ;; show any imbalances if option choosen
     (if (and (opt-val pagename-display optname-show-imbalance)
-            (or (equal? primary-key 'account-name) (equal? primary-key 'account-code))
+           ; (or (equal? primary-key 'account-name) (equal? primary-key 'account-code))
             (not do-find?))
     (begin
       (let* (

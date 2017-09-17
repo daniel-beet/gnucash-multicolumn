@@ -86,12 +86,12 @@
 (define optname-find-min (N_ "Find minimum amount"))
 (define optname-find-max (N_ "Find maximum ammount"))
 
-(define text-containing ", containing " )
+(define text-containing " containing " )
 (define text-and " and ")
 (define text-or " or ")
 (define text-but-not " but not ")
-(define text-minimum ", Minimum ")
-(define text-maximum ", Maximum ")
+(define text-minimum " Minimum ")
+(define text-maximum " Maximum ")
 
 ;; added for consolidating
 (define consolidated-text "Consolidated")
@@ -128,33 +128,39 @@
 ;; following value may need to be changed
 (define the_tab gnc:pagename-general)
 
-(define text-whichperiod "Select Period")
+(define text-whichperiod "Select Time Period")
+(define text-whichperiod-help "Select which time period to use")
 (define text-customdates "Custom Dates")
-(define custom-from-date (N_ "Custom_Start Date"))
-(define custom-to-date (N_ "Custom_End Date"))
-(define text-pick-year "Year for Specified Pick")
-(define text-period "Specified Period")
-(define text-last "Specified Last")
-(define text-month "Specified Month")
+(define text-customdates-help "Choose the start and end dates using custom date and ignore the section labeled specified choices")
+(define custom-from-date (N_ "Custom Date - Start Date"))
+(define custom-to-date (N_ "Custom Date - End Date"))
+(define text-pick-year "Year for Specified Choices")
+(define text-pick-year-help "Pick the year for report - Not used for custom dates, only used for specified choices")
+(define text-period "Specified Choices - Period")
+(define text-period-help "Choose for time periods such as full year or second quarter or month-to-date")
+(define text-last "Specified Choices - Last")
+(define text-last-help "Choose for choices like last 3 months,  last 90 days, last month, last week ")
+(define text-month "Specified Choices - Month")
+(define text-month-help "choose for choices consisting of months of the year, note the month is considered to start on the day specified in edit/preferences/accountingPeriod")
 
 
 (define gnc:list-datechoices
    (list (list->vector
              (list 'customdates
                    (N_ text-customdates)
-                   (N_ "use selected dates and ignore specific choices")))
+                   (N_ text-customdates-help)))
             (list->vector
              (list 'period
                    (N_ text-period)
-                   (N_ "which period to use")))
+                   (N_ text-period-help)))
             (list->vector
              (list 'last
                    (N_ text-last)
-                   (N_ "when to use")))
+                   (N_ text-last-help)))
             (list->vector
              (list 'month
                    (N_ text-month)
-                   (N_ "use specific month")))
+                   (N_ text-month-help)))
            )
 )
     (define scale-num
@@ -169,7 +175,7 @@
    (list (list->vector
              (list 'description
                    (N_ "description  ")
-                   (N_ "search descriptions or transactions for the text - note a blank is added at start and end of description")))
+                   (N_ "search descriptions  for the text - note a blank is added at start and end of description")))
             (list->vector
              (list 'account-name
                    (N_ "account name")
@@ -178,6 +184,10 @@
              (list 'account-code
                    (N_ "account code")
                    (N_ "search account code")))
+            (list->vector
+             (list 'amount
+                   (N_ "amount ")
+                   (N_ "search amount for the entry, such as $(100.32  - note a blank is added at start and end of each so '7 ' finds all entries ending with 7")))
             (list->vector
              (list 'memo
                    (N_ "memo    ")
@@ -296,6 +306,18 @@
 (define description-titlecase? #t)
 
 ;; for consolidate descriptions (create composite  - to combine multiple entries with same payee)
+(define marker1 (string #\# #\1 #\w #\backspace)) ;all of the markers need to be 4 characters in length
+(define marker2 (string #\# #\2 #\x #\backspace))
+(define marker3 (string #\# #\3 #\y #\backspace))
+(define marker4 (string #\# #\4 #\z #\backspace))
+(define marker5 (string #\# #\5 #\y #\backspace))
+(define marker6 (string #\# #\6 #\x #\backspace))
+(define marker7 (string #\# #\7 #\w #\backspace))
+(define marker8 (string #\# #\8 #\v #\backspace))
+(define marker9 (string #\# #\9 #\u #\backspace))
+(define markerA (string #\# #\A #\t #\backspace))
+(define markerB (string #\# #\B #\s #\backspace))
+
 (define consolidate? #f)
 (define curr " ")
 (define comm-curr? #f)
@@ -341,7 +363,7 @@
     (let* (
     ;;
             (thekey (car transaction))
-            (endprimary (string-contains thekey "#Yw;"))
+            (endprimary (string-contains thekey marker1))
             (primary (if (< 0 endprimary)
                             (string-copy thekey 0 endprimary)
                     " ")) ;default
@@ -353,8 +375,8 @@
 (define (get-secondary-key transaction)
     (let* (
             (thekey (car transaction))
-            (startsecond (string-contains thekey "#Yw;"))
-            (endsecond (string-contains thekey "#Yx;"))
+            (startsecond (string-contains thekey marker1))
+            (endsecond (string-contains thekey marker2))
             (secondary (if  (< 4 (- endsecond startsecond))
                         (string-copy thekey (+ 4 startsecond) endsecond)
                         " " ));default
@@ -388,8 +410,8 @@
 (define (get-date-tm transaction)
     (let* (
             (thekey (car transaction))
-            (startdate (string-contains thekey "#Yx;"))
-            (enddate (string-contains thekey "#Yy;"))
+            (startdate (string-contains thekey marker2))
+            (enddate (string-contains thekey marker3))
             (date (if  (< 11 (- enddate startdate))
                     (string-copy thekey (+ 4 startdate) enddate)
                     "20000114" ;default date
@@ -412,7 +434,7 @@
 (define (get-currency-type transaction)
     (let* (
             (thekey (car transaction))
-            (startcurr (string-contains thekey "#Zu;"))
+            (startcurr (string-contains thekey marker9))
             (currency-type (if (< (+ startcurr 4) (string-length thekey))
                             (string-copy thekey (+ startcurr 4))
                             ;(string-take-right thekey (+ startcurr 4))
@@ -422,8 +444,8 @@
 (define (get-memo transaction)
     (let* (
             (thekey (car transaction))
-            (endmemo  (string-contains thekey "#Zv;"))
-            (startmem (string-contains thekey "#Zw;"))
+            (endmemo  (string-contains thekey marker8))
+            (startmem (string-contains thekey marker7))
             (memo (if  (< 4 (- endmemo startmem))
                         (string-copy thekey  (+ startmem 4) endmemo)
                         " ")))
@@ -433,8 +455,8 @@
 (define (get-reverse-sign? transaction)
     (let* (
             (thekey (car transaction))
-            (end  (string-contains thekey "#Zu;"))
-            (start (string-contains thekey "#Zv;"))
+            (end  (string-contains thekey marker9))
+            (start (string-contains thekey marker8))
             (rev-sign (if  (< 4 (- end start))
                         #t
                         #f)))
@@ -444,8 +466,8 @@
 (define (get-description transaction)
     (let* (
             (thekey (car transaction))
-            (startdescrip (string-contains thekey "#Yy;"))
-            (enddescrip (string-contains thekey "#Yz;"))
+            (startdescrip (string-contains thekey marker3))
+            (enddescrip (string-contains thekey marker4))
             (description (if  (< 4 (- enddescrip startdescrip))
                         (string-copy thekey (+ 4 startdescrip) enddescrip)
                         " ")))
@@ -463,8 +485,8 @@
 (define (get-namecode transaction)
     (let* (
             (thekey (car transaction))
-            (startnamcode (string-contains thekey "#Yz;"))
-            (endnamcode (string-contains thekey "#Zy;"))
+            (startnamcode (string-contains thekey marker4))
+            (endnamcode (string-contains thekey marker5))
             (namcode (if  (< 4 (- endnamcode startnamcode))
                         (string-copy thekey (+ 4 startnamcode) endnamcode)
                         " ")))
@@ -474,8 +496,8 @@
 (define (get-account-code transaction)
     (let* (
             (thekey (car transaction))
-            (startcod  (string-contains thekey "#Zy;"))
-            (endothercod (string-contains thekey "#Zx;"))
+            (startcod  (string-contains thekey marker5))
+            (endothercod (string-contains thekey marker6))
             (acctcod (if  (< 4 (- endothercod startcod))
                         (string-copy thekey  (+ startcod 4) endothercod)
                         " ")))
@@ -486,8 +508,8 @@
 (define (get-other-name transaction)
     (let* (
             (thekey (car transaction))
-            (endacctname  (string-contains thekey "#Zx;"))
-            (endothernam (string-contains thekey "#Zw;"))
+            (endacctname  (string-contains thekey marker6))
+            (endothernam (string-contains thekey marker7))
             (othernam (if  (< 4 (- endothernam endacctname))
                         (string-copy thekey  (+ endacctname 4) endothernam)
                         " ")))
@@ -495,10 +517,10 @@
     )
 
 (define (get-accountname-from-sort thekey transaction)
-    (let ((start-account (string-contains thekey "#Yv;")))
+    (let ((start-account (string-contains thekey markerA)))
         (if start-account
             (if (< (+ 4 start-account) (string-length thekey) )
-                (string-append (get-account-code transaction)  (substring thekey (+ 4 (string-contains thekey "#Yv;"))))
+                (string-append (get-account-code transaction)  (substring thekey (+ 4 (string-contains thekey markerA))))
                 " ")
         thekey)
         ))
@@ -726,13 +748,13 @@
                             (set! currency-col-type (number->string currency-type-num)); this is why not incrementing should be currency-col-type-num
                         ))
                         ;; add to total for the account column
-                        (hash-set! accounts-cols-totals-hash (string-append acctfull "#Vv;" hashed-currency)
+                        (hash-set! accounts-cols-totals-hash (string-append acctfull markerB hashed-currency)
                             (gnc:make-gnc-monetary report-currency
                             (gnc-numeric-add
                             (gnc:gnc-monetary-amount
                                 split-value)
                             (gnc:gnc-monetary-amount
-                            (hash-ref accounts-cols-totals-hash (string-append acctfull "#Vv;" hashed-currency)
+                            (hash-ref accounts-cols-totals-hash (string-append acctfull markerB hashed-currency)
                                 (gnc:make-gnc-monetary report-currency (gnc-numeric-zero))))
                                      GNC-DENOM-AUTO GNC-RND-ROUND)
                                     ))
@@ -789,7 +811,7 @@
                      (acctfull (gnc-account-get-full-name (car account-alist)))
                      ; originaly planned to increment through currency-col-type-hash and print each currency on different line
                      ; however appears each account can only have one currency
-                     (col-total (hash-ref accounts-cols-totals-hash (string-append acctfull "#Vv;" currency-col-type) #f))
+                     (col-total (hash-ref accounts-cols-totals-hash (string-append acctfull markerB currency-col-type) #f))
                     )
                     (addto! row-contents
                     (gnc:make-html-table-cell/markup
@@ -1854,7 +1876,7 @@
         (gnc:make-multichoice-callback-option
     ;    (gnc:make-multichoice-option
         the_tab (N_ text-whichperiod)
-        "ca" (N_ "Select which time period to use")
+        "ca" (N_ text-whichperiod-help)
         'period
 ;;        gnc:list-datechoices
 ;;        ))
@@ -2559,6 +2581,8 @@ Credit Card, and Income accounts.")))))
                                             ""
                                             (gnc-print-date date))))
             (string-contains (string-append " " (string-upcase printed-date) " ")  text-to-find))) ;reconciled date
+        (( 9) ; 'amount
+            (string-contains (string-append " " (gnc:monetary->string split-value) " ")  text-to-find))
         ((17) ; 'reconcile
             (string-contains (string-append " " (string-upcase (string (xaccSplitGetReconcile currentsplit)) ) " ")  text-to-find))
         ))
@@ -3409,7 +3433,11 @@ Credit Card, and Income accounts.")))))
 (define (get-the-transactions splits account-full-name? account-code? consolidate-case-sensitive? primary-comp-key secondary-comp-key)
 
 (define (set-date-tm trans-date-tm sort-date-type )
-    (case sort-date-type
+    (begin
+        (set-tm:sec trans-date-tm 0)
+        (set-tm:min trans-date-tm 0)
+        (set-tm:hour trans-date-tm 12)
+      (case sort-date-type
         ((5) ; 'none
             (set-tm:mday trans-date-tm 1 )
             )
@@ -3436,7 +3464,7 @@ Credit Card, and Income accounts.")))))
             )
         )
         trans-date-tm
-    )
+    ))
 ;;
 
 
@@ -3450,8 +3478,8 @@ Credit Card, and Income accounts.")))))
           (let (
                 (account (xaccSplitGetAccount split)))
                 (if account-full-name?
-                    (string-append  "#Yv;" (gnc-account-get-full-name account) )
-                    (string-append  (gnc-account-get-full-name account) "#Yv;" (xaccAccountGetName account))))
+                    (string-append  markerA (gnc-account-get-full-name account) )
+                    (string-append  (gnc-account-get-full-name account) markerA (xaccAccountGetName account))))
             )
         ((2)  ; 'account-code
             (let (
@@ -3647,9 +3675,9 @@ Credit Card, and Income accounts.")))))
                 )
         (hashed-currency (hash-ref currency-type-hash report-currency currency-type)) ; in case transactions with same description have different currencies
 
-        (hashkey (string-append  primary-sort "#Yw;" secondary-sort "#Yx;" date-string "#Yy;"
-                         descript "#Yz;"
-            acctnamecode "#Zy;" acct-code "#Zx;" acctothernamcod "#Zw;" memo "#Zv;" member-reverse-sign "#Zu;" hashed-currency  ))
+        (hashkey (string-append  primary-sort marker1 secondary-sort marker2 date-string marker3
+                         descript marker4
+            acctnamecode marker5 acct-code marker6 acctothernamcod marker7 memo marker8 member-reverse-sign marker9 hashed-currency  ))
          )
         (total-payee-hash-add! payee-hash hashkey split-value-mon payee-account-guid-hash guids+description)
         (if (equal? currency-type hashed-currency); if we used the current number - add to hash and prepare new number
@@ -3696,21 +3724,28 @@ Credit Card, and Income accounts.")))))
 ;; may need to change op-value to get-option
         (whichperiod-val (opt-val the_tab text-whichperiod))
 
-        (cust-start-date-tp    (gnc:timepair-start-day-time
+        (cust-start-date-tp     (gnc:timepair-start-day-time
                                     (gnc:date-option-absolute-time
                                     (opt-val the_tab
                                         custom-from-date))))
 
-        (cust-end-date-tp    (gnc:timepair-end-day-time
+        (cust-end-date-tp       (gnc:timepair-end-day-time
                                     (gnc:date-option-absolute-time
                                     (opt-val the_tab
                                         custom-to-date))))
-        (year-val     (opt-val  the_tab text-pick-year))
-        (period-val   (opt-val  the_tab text-period))
-        (last-val   (opt-val the_tab text-last))
-        (month-val   (opt-val the_tab text-month))
-        (datelist   (gnc:getdates
-            (list whichperiod-val year-val period-val last-val month-val)) )
+        (datelist               (gnc:get-dates
+                                    (list
+                                        (list 'whichperiod-val
+                                            (opt-val the_tab text-whichperiod))
+                                        (list 'year-val
+                                            (opt-val the_tab text-pick-year))
+                                        (list 'period-val
+                                            (opt-val the_tab text-period))
+                                        (list 'last-val
+                                            (opt-val the_tab text-last))
+                                        (list 'month-val
+                                            (opt-val the_tab text-month))
+            )))
         ;;
         ;; replace following two names with your names and comment out your old definitions
         (begindate    (if (equal? whichperiod-val 'customdates )
@@ -3874,14 +3909,14 @@ Credit Card, and Income accounts.")))))
             ))
         (if find-min?
             (begin
-            (set! findtitle (string-append findtitle text-minimum (gnc:monetary->string
+            (set! findtitle (string-append findtitle (if find-text? "," "") text-minimum (gnc:monetary->string
                                     (gnc:make-gnc-monetary report-currency
                                     (gnc:make-gnc-numeric (inexact->exact (* 100 find-min)) 100)  ))))
             (set! find-min (* 100 find-min))
             ))
         (if find-max?
             (begin
-            (set! findtitle (string-append findtitle text-maximum (gnc:monetary->string
+            (set! findtitle (string-append findtitle (if (or find-text? find-min?) "," "") text-maximum (gnc:monetary->string
                                     (gnc:make-gnc-monetary report-currency
                                     (gnc:make-gnc-numeric (inexact->exact (* 100 find-max)) 100)  ))))
             (set! find-max (* 100 find-max))
